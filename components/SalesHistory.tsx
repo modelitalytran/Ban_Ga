@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Order, CartItem, Product } from '../types';
-import { Calendar, User, Tag, AlertCircle, CheckCircle, Edit2, X, Save, Scale } from 'lucide-react';
+import { Calendar, User, Tag, AlertCircle, CheckCircle, Edit2, X, Save, Scale, Info } from 'lucide-react';
 
 interface SalesHistoryProps {
   orders: Order[];
@@ -103,7 +103,7 @@ const SalesHistory: React.FC<SalesHistoryProps> = ({ orders, onEditOrder }) => {
             <tbody className="divide-y divide-gray-100">
                 {sortedOrders.map(order => (
                 <tr key={order.id} className="hover:bg-gray-50 transition-colors group">
-                    <td className="p-4">
+                    <td className="p-4 align-top">
                         <div className="flex flex-col">
                             <span className="font-medium text-gray-900 text-sm">#{order.id.slice(-6)}</span>
                             <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
@@ -112,7 +112,7 @@ const SalesHistory: React.FC<SalesHistoryProps> = ({ orders, onEditOrder }) => {
                             </div>
                         </div>
                     </td>
-                    <td className="p-4">
+                    <td className="p-4 align-top">
                          <div className="flex flex-col gap-1">
                             <div className="flex items-center gap-2 font-medium text-gray-800">
                                 <User size={14} className="text-gray-400"/>
@@ -123,7 +123,7 @@ const SalesHistory: React.FC<SalesHistoryProps> = ({ orders, onEditOrder }) => {
                             </span>
                          </div>
                     </td>
-                    <td className="p-4">
+                    <td className="p-4 align-top">
                         <div className="flex flex-col gap-1.5">
                             {order.items.map((item, idx) => (
                                 <div key={idx} className="text-sm text-gray-700 flex items-center justify-between gap-4 border-b border-dashed border-gray-100 last:border-0 pb-1 last:pb-0">
@@ -144,10 +144,10 @@ const SalesHistory: React.FC<SalesHistoryProps> = ({ orders, onEditOrder }) => {
                             ))}
                         </div>
                     </td>
-                    <td className="p-4 font-bold text-gray-900">
+                    <td className="p-4 font-bold text-gray-900 align-top">
                         {order.total.toLocaleString('vi-VN')} ₫
                     </td>
-                    <td className="p-4">
+                    <td className="p-4 align-top">
                         {order.saleType === 'internal' ? (
                             <span className="text-green-600 text-sm italic">Miễn phí</span>
                         ) : (
@@ -162,10 +162,17 @@ const SalesHistory: React.FC<SalesHistoryProps> = ({ orders, onEditOrder }) => {
                                         <CheckCircle size={12}/> Đủ
                                     </span>
                                 )}
+                                {/* Display Note if available */}
+                                {order.note && (
+                                    <div className="mt-1 text-xs text-gray-500 bg-gray-50 p-1.5 rounded border border-gray-100 flex items-start gap-1">
+                                        <Info size={12} className="shrink-0 mt-0.5"/>
+                                        <span className="italic">{order.note}</span>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </td>
-                    <td className="p-4 text-right">
+                    <td className="p-4 text-right align-top">
                         <button 
                             onClick={() => handleOpenEdit(order)}
                             className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors opacity-0 group-hover:opacity-100"

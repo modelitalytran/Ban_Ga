@@ -200,6 +200,16 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
     setPaidAmount(cartTotal);
   }, [cartTotal]);
 
+  // Handle Input Change for Paid Amount (Currency Formatting)
+  const handlePaidAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const rawValue = e.target.value.replace(/\D/g, ''); // Remove all non-digits
+      if (rawValue === '') {
+          setPaidAmount('');
+      } else {
+          setPaidAmount(parseInt(rawValue, 10)); // parseInt automatically removes leading zeros
+      }
+  };
+
   // --- STRICT LOGIC FOR PAYMENT ALLOCATION ---
   const paymentAllocation = useMemo(() => {
       const pay = Number(paidAmount) || 0;
@@ -287,6 +297,30 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
     // Quan trọng: Gửi số tiền khách đưa thực tế, App.tsx sẽ tính toán debt
     const finalPaidInput = paidAmount === '' ? 0 : Number(paidAmount);
     
+    // Construct Detailed Note
+    let detailedNote = '';
+    if (saleType === 'internal') {
+        detailedNote = 'Xuất nội bộ/Tặng';
+    } else {
+        // Build detailed payment breakdown string
+        const parts = [];
+        parts.push(`Khách đưa: ${finalPaidInput.toLocaleString('vi-VN')}đ`);
+        
+        if (paymentAllocation.forCurrentOrder > 0) {
+            parts.push(`Đơn này: ${paymentAllocation.forCurrentOrder.toLocaleString('vi-VN')}đ`);
+        }
+        
+        if (paymentAllocation.forOldDebt > 0) {
+             parts.push(`Trừ nợ cũ: ${paymentAllocation.forOldDebt.toLocaleString('vi-VN')}đ`);
+        }
+        
+        if (paymentAllocation.changeReturn > 0) {
+             parts.push(`Tiền thừa: ${paymentAllocation.changeReturn.toLocaleString('vi-VN')}đ`);
+        }
+
+        detailedNote = parts.join(" | ");
+    }
+
     // Create Clean Order Object
     const newOrder: Order = {
       id: `ORD-${Date.now()}`,
@@ -300,7 +334,7 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
       saleType: saleType,
       paidAmount: finalPaidInput, 
       debt: 0, // Placeholder, will be calculated in App.tsx
-      note: saleType === 'internal' ? 'Xuất nội bộ/Tặng' : '', // Fixed: Use empty string instead of undefined
+      note: detailedNote, // Use the generated detailed note
       discountApplied: discountRate || 0,
       payments: []
     };
@@ -544,10 +578,10 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
                              <DollarSign size={16} />
                          </div>
                          <input 
-                            type="number"
+                            type="text"
                             className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-bold text-gray-800"
-                            value={paidAmount}
-                            onChange={(e) => setPaidAmount(Number(e.target.value))}
+                            value={paidAmount ? paidAmount.toLocaleString('vi-VN') : ''}
+                            onChange={handlePaidAmountChange}
                             placeholder="0"
                          />
                      </div>
