@@ -102,8 +102,6 @@ const App: React.FC = () => {
     // If customer pays more than the order total
     if (finalNewOrder.paidAmount > finalNewOrder.total) {
         surplus = finalNewOrder.paidAmount - finalNewOrder.total;
-        // The debt for THIS order is 0. 
-        // Note: We keep paidAmount as the full amount entered to track the transaction accurately.
         finalNewOrder.debt = 0;
     } else {
         finalNewOrder.debt = finalNewOrder.total - finalNewOrder.paidAmount;
@@ -113,8 +111,6 @@ const App: React.FC = () => {
 
     // 2. Distribute Surplus to Oldest Debts
     if (surplus > 0) {
-        // Find unpaid orders for this customer, exclude the current one (obviously not in list yet, but safety check)
-        // Sort by Date ASC (Oldest first)
         const customerDebtsIndices = updatedOrders
             .map((order, index) => ({ ...order, originalIndex: index }))
             .filter(o => 
@@ -128,7 +124,6 @@ const App: React.FC = () => {
 
             const amountToPay = Math.min(surplus, debtOrder.debt);
             
-            // Create a payment record
             const paymentRecord: PaymentRecord = {
                 id: `PAY-AUTO-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                 date: new Date().toISOString(),
@@ -136,7 +131,6 @@ const App: React.FC = () => {
                 note: `Thanh toán cấn trừ từ đơn mới #${finalNewOrder.id.slice(-6)}`
             };
 
-            // Update the old order in the main array
             const targetIndex = debtOrder.originalIndex;
             const orderToUpdate = updatedOrders[targetIndex];
             
@@ -173,6 +167,44 @@ const App: React.FC = () => {
     const updatedOrders = orders.map(o => o.id === order.id ? order : o);
     setOrders(updatedOrders);
     saveOrders(updatedOrders);
+  };
+
+  const handleEditOrder = (updatedOrder: Order, originalOrder: Order) => {
+      // 1. Revert Stock from Original Order (Add back)
+      let tempProducts = [...products];
+      
+      originalOrder.items.forEach(oldItem => {
+          const productIndex = tempProducts.findIndex(p => p.id === oldItem.id);
+          if (productIndex !== -1) {
+              tempProducts[productIndex] = {
+                  ...tempProducts[productIndex],
+                  stock: tempProducts[productIndex].stock + oldItem.quantity
+              };
+          }
+      });
+
+      // 2. Deduct Stock for Updated Order (Subtract new qty)
+      updatedOrder.items.forEach(newItem => {
+          const productIndex = tempProducts.findIndex(p => p.id === newItem.id);
+          if (productIndex !== -1) {
+              tempProducts[productIndex] = {
+                  ...tempProducts[productIndex],
+                  stock: tempProducts[productIndex].stock - newItem.quantity
+              };
+          }
+      });
+
+      // 3. Update Order in List
+      const updatedOrders = orders.map(o => o.id === updatedOrder.id ? updatedOrder : o);
+      
+      // 4. Save All
+      setProducts(tempProducts);
+      saveProducts(tempProducts);
+      
+      setOrders(updatedOrders);
+      saveOrders(updatedOrders);
+      
+      alert(`Đã cập nhật đơn hàng #${updatedOrder.id.slice(-6)} và điều chỉnh tồn kho.`);
   };
 
   const renderContent = () => {
@@ -216,7 +248,7 @@ const App: React.FC = () => {
             />
         );
       case 'history':
-        return <SalesHistory orders={orders} />;
+        return <SalesHistory orders={orders} onEditOrder={handleEditOrder} />;
       case 'ai-assistant':
         return <AIAssistant products={products} orders={orders} />;
       default:

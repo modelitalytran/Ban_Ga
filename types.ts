@@ -3,12 +3,15 @@ export interface PriceHistoryItem {
   price: number;
 }
 
+export type ProductUnit = 'kg' | 'con';
+
 export interface Product {
   id: string;
   name: string;
   category: string; // Gà, Vịt, Bồ câu
-  price: number;
-  stock: number; // Số con
+  price: number; // Giá trên mỗi đơn vị (đ/kg hoặc đ/con)
+  stock: number; // Số con (luôn quản lý theo đầu con)
+  unit: ProductUnit; // Đơn vị tính giá
   description: string;
   image: string; // URL
   minStockThreshold?: number; // Mức cảnh báo tồn kho tối thiểu
@@ -16,7 +19,8 @@ export interface Product {
 }
 
 export interface CartItem extends Product {
-  quantity: number;
+  quantity: number; // Số con
+  weight?: number; // Tổng cân nặng (chỉ dùng nếu unit='kg')
 }
 
 export type SaleType = 'retail' | 'agency' | 'internal'; // Bán lẻ, Đại lý, Nhà ăn/Tặng
