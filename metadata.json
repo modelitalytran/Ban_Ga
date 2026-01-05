@@ -1,0 +1,5 @@
+{
+  "name": "Poultry Farm Manager",
+  "description": "Ứng dụng quản lý kinh doanh Gia cầm (Gà, Vịt, Bồ câu). Quản lý bán lẻ, đại lý, biếu tặng, theo dõi công nợ và tồn kho.",
+  "requestFramePermissions": []
+}
