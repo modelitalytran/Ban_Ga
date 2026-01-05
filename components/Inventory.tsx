@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
-import { Product, PriceHistoryItem } from '../types';
+import { Product, PriceHistoryItem, ProductUnit } from '../types';
 import { generateProductDescription } from '../services/geminiService';
-import { Plus, Search, Edit2, Trash2, Sparkles, X, Loader2, Feather, ArrowDownCircle, AlertTriangle, Upload, Image as ImageIcon, Filter, TrendingUp, History, Check, AlertCircle } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Sparkles, X, Loader2, Feather, ArrowDownCircle, AlertTriangle, Upload, Image as ImageIcon, Filter, TrendingUp, History, Check, AlertCircle, Scale } from 'lucide-react';
 
 interface InventoryProps {
   products: Product[];
@@ -33,6 +33,7 @@ const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, onUpdateP
     category: 'Gà',
     price: 0,
     stock: 0,
+    unit: 'con', // Default unit
     description: '',
     image: '',
     minStockThreshold: 10,
@@ -65,7 +66,10 @@ const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, onUpdateP
     setErrorMessage(null);
     if (product) {
       setEditingProduct(product);
-      setFormData(product);
+      setFormData({
+          ...product,
+          unit: product.unit || 'con' // Ensure unit exists
+      });
     } else {
       setEditingProduct(null);
       setFormData({
@@ -73,6 +77,7 @@ const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, onUpdateP
         category: 'Gà',
         price: 0,
         stock: 0,
+        unit: 'con', // Default for new product
         description: '',
         image: '',
         minStockThreshold: 10,
@@ -154,6 +159,7 @@ const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, onUpdateP
       category: formData.category || 'Gà',
       price: currentPrice,
       stock: Number(formData.stock),
+      unit: formData.unit || 'con', // FIX: Ensure unit is saved
       description: formData.description || '',
       image: formData.image || defaultImage,
       minStockThreshold: Number(formData.minStockThreshold) || 10,
@@ -277,6 +283,11 @@ const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, onUpdateP
                         <div className="flex items-center gap-4">
                             <div className="w-16 h-16 rounded-xl overflow-hidden border border-gray-100 bg-gray-50 shrink-0 relative">
                                 <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+                                {product.unit === 'kg' && (
+                                    <div className="absolute top-1 right-1 bg-white/90 p-0.5 rounded shadow-sm">
+                                        <Scale size={12} className="text-blue-600"/>
+                                    </div>
+                                )}
                             </div>
                             <div>
                                 <p className="font-bold text-gray-900 text-base">{product.name}</p>
@@ -292,7 +303,8 @@ const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, onUpdateP
                         </span>
                     </td>
                     <td className="p-4 font-bold text-gray-900">
-                        {product.price.toLocaleString('vi-VN')} ₫
+                        {product.price.toLocaleString('vi-VN')} ₫ 
+                        <span className="text-xs font-normal text-gray-500">/{product.unit}</span>
                     </td>
                     <td className="p-4">
                         <div className="font-semibold text-gray-700">{product.stock} <span className="text-xs font-normal text-gray-500">con</span></div>
@@ -354,8 +366,13 @@ const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, onUpdateP
                 return (
                     <div key={product.id} className="p-4 bg-gray-50/50 rounded-xl border border-gray-100 flex flex-col gap-3">
                         <div className="flex gap-3">
-                            <div className="w-20 h-20 rounded-xl overflow-hidden bg-gray-50 border border-gray-100 shrink-0">
+                            <div className="w-20 h-20 rounded-xl overflow-hidden bg-gray-50 border border-gray-100 shrink-0 relative">
                                 <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+                                {product.unit === 'kg' && (
+                                    <div className="absolute top-1 right-1 bg-white/90 p-0.5 rounded shadow-sm">
+                                        <Scale size={12} className="text-blue-600"/>
+                                    </div>
+                                )}
                             </div>
                             <div className="flex-1 min-w-0">
                                 <div className="flex justify-between items-start">
@@ -366,7 +383,7 @@ const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, onUpdateP
                                 </div>
                                 <p className="text-sm text-gray-500 line-clamp-1 mt-0.5 mb-1">{product.description}</p>
                                 <div className="flex items-center justify-between mt-2">
-                                    <span className="font-bold text-blue-600">{product.price.toLocaleString('vi-VN')} ₫</span>
+                                    <span className="font-bold text-blue-600">{product.price.toLocaleString('vi-VN')} ₫<span className="text-[10px] font-normal">/{product.unit}</span></span>
                                     {status === 'out' && <span className="text-xs text-red-600 font-bold bg-red-50 px-2 py-0.5 rounded-full">Hết hàng</span>}
                                     {status === 'low' && <span className="text-xs text-orange-600 font-bold bg-orange-50 px-2 py-0.5 rounded-full">Sắp hết ({product.stock})</span>}
                                     {status === 'in' && <span className="text-xs text-green-600 font-bold bg-green-50 px-2 py-0.5 rounded-full">Còn {product.stock}</span>}
@@ -526,6 +543,20 @@ const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, onUpdateP
                             </select>
                         </div>
                         <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Đơn vị tính</label>
+                            <select
+                                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                                value={formData.unit}
+                                onChange={e => setFormData({...formData, unit: e.target.value as ProductUnit})}
+                            >
+                                <option value="con">Con</option>
+                                <option value="kg">Cân ký (Kg)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-5">
+                         <div>
                             <label className="block text-sm font-semibold text-gray-700 mb-1.5">Giá bán lẻ (VNĐ)</label>
                             <div className="relative">
                                 <input 
@@ -540,11 +571,8 @@ const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, onUpdateP
                                 <TrendingUp size={10}/> Lưu lịch sử khi đổi giá
                             </p>
                         </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-5 p-4 bg-gray-50 rounded-xl border border-gray-100">
-                        <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Tồn kho hiện tại</label>
+                         <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Tồn kho hiện tại (Con)</label>
                             <input 
                             type="number" 
                             className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
@@ -552,18 +580,20 @@ const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, onUpdateP
                             onChange={e => setFormData({...formData, stock: Number(e.target.value)})}
                             />
                         </div>
-                        <div>
-                            <label className="block text-sm font-semibold text-red-600 mb-1.5 flex items-center gap-1">
-                                <AlertTriangle size={14}/> Cảnh báo tối thiểu
-                            </label>
-                            <input 
-                            type="number" 
-                            className="w-full px-3 py-2.5 border border-red-200 bg-white rounded-lg focus:ring-2 focus:ring-red-500 outline-none"
-                            value={formData.minStockThreshold}
-                            onChange={e => setFormData({...formData, minStockThreshold: Number(e.target.value)})}
-                            placeholder="10"
-                            />
-                        </div>
+                    </div>
+
+                    <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
+                         <label className="block text-sm font-semibold text-red-600 mb-1.5 flex items-center gap-1">
+                            <AlertTriangle size={14}/> Cảnh báo tồn kho tối thiểu
+                        </label>
+                        <input 
+                        type="number" 
+                        className="w-full px-3 py-2.5 border border-red-200 bg-white rounded-lg focus:ring-2 focus:ring-red-500 outline-none"
+                        value={formData.minStockThreshold}
+                        onChange={e => setFormData({...formData, minStockThreshold: Number(e.target.value)})}
+                        placeholder="10"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Hệ thống sẽ báo động khi số lượng con giảm xuống dưới mức này.</p>
                     </div>
 
                     <div>
