@@ -2,13 +2,17 @@ import { GoogleGenAI } from "@google/genai";
 import { Product, Order } from "../types";
 
 // Initialize Gemini Client
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Lưu ý: API Key được lấy từ biến môi trường. Đảm bảo file .env hoặc cấu hình Vite đã có VITE_API_KEY hoặc tương tự.
+const apiKey = process.env.API_KEY || ''; 
+const ai = new GoogleGenAI({ apiKey: apiKey });
 
 const GENERATION_MODEL = 'gemini-3-flash-preview';
 
 export const generateProductDescription = async (name: string, category: string): Promise<string> => {
+  if (!apiKey) return "Chưa cấu hình API Key cho AI.";
+
   try {
-    const prompt = `Viết một mô tả ngắn gọn, hấp dẫn (bằng tiếng Việt) cho một giống gia cầm hoặc sản phẩm tên là "${name}" thuộc loại "${category}". Tập trung vào chất lượng thịt, khả năng sinh trưởng hoặc đặc điểm giống. Giữ dưới 30 từ. Không dùng Markdown.`;
+    const prompt = `Viết một mô tả ngắn gọn, hấp dẫn (bằng tiếng Việt) cho một giống gia cầm hoặc sản phẩm tên là "${name}" thuộc loại "${category}". Tập trung vào chất lượng thịt, khả năng sinh trưởng hoặc đặc điểm giống. Giữ dưới 40 từ. Không dùng Markdown.`;
     
     const response = await ai.models.generateContent({
       model: GENERATION_MODEL,
@@ -18,7 +22,7 @@ export const generateProductDescription = async (name: string, category: string)
     return response.text || "Không thể tạo mô tả lúc này.";
   } catch (error) {
     console.error("Gemini Error:", error);
-    return "Lỗi khi kết nối với AI.";
+    return "Lỗi kết nối AI (Vui lòng kiểm tra API Key).";
   }
 };
 
@@ -27,33 +31,54 @@ export const analyzeBusinessData = async (
   products: Product[], 
   orders: Order[]
 ): Promise<string> => {
+  if (!apiKey) return "Hệ thống chưa phát hiện API Key. Vui lòng cấu hình để sử dụng Trợ lý AI.";
+
   try {
-    // Prepare context
+    // 1. Summarize Data for Context (Avoid token limit issues by aggregating)
+    const totalRevenue = orders.reduce((sum, o) => sum + o.total, 0);
+    const totalDebt = orders.reduce((sum, o) => sum + o.debt, 0);
+    
+    const productSummary = products.map(p => 
+      `- ${p.name} (${p.category}): Giá ${p.price/1000}k, Tồn ${p.stock}, ${p.stock <= (p.minStockThreshold || 10) ? 'SẮP HẾT' : 'Ổn'}`
+    ).join('\n');
+
+    // Get recent orders (last 5)
+    const recentOrders = orders
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, 5)
+      .map(o => `- ${new Date(o.date).toLocaleDateString('vi-VN')}: ${o.customerName} mua ${o.total/1000}k (${o.saleType})`)
+      .join('\n');
+
+    const debtors = orders
+      .filter(o => o.debt > 0)
+      .map(o => `- ${o.customerName}: Nợ ${o.debt/1000}k`)
+      .join('\n');
+
+    // 2. Build Prompt
     const context = `
-      Bạn là trợ lý ảo chuyên nghiệp cho một trang trại kinh doanh gia cầm (Gà, Vịt, Bồ câu).
+      Bạn là trợ lý quản lý trại gà/vịt chuyên nghiệp tên là "Hoàng Trần AI".
       
-      Dữ liệu kho hiện tại (JSON):
-      ${JSON.stringify(products.map(p => ({ name: p.name, stock: p.stock, price: p.price, category: p.category })))}
+      DỮ LIỆU TỔNG QUAN:
+      - Tổng doanh thu: ${totalRevenue.toLocaleString('vi-VN')} VNĐ
+      - Tổng nợ phải thu: ${totalDebt.toLocaleString('vi-VN')} VNĐ
       
-      Lịch sử bán hàng (JSON):
-      ${JSON.stringify(orders.map(o => ({ 
-        date: o.date, 
-        total: o.total, 
-        customer: o.customerName,
-        type: o.saleType,
-        debt: o.debt,
-        items: o.items.map(i => ({ name: i.name, qty: i.quantity })) 
-      })))}
+      KHO HÀNG:
+      ${productSummary}
       
-      Câu hỏi người dùng: "${query}"
+      GIAO DỊCH GẦN ĐÂY:
+      ${recentOrders}
       
-      Hướng dẫn:
-      - Trả lời dựa trên dữ liệu.
-      - Nếu hỏi về doanh thu, tính tổng tiền.
-      - Nếu hỏi về nợ, hãy liệt kê những khách đang nợ (debt > 0).
-      - Nếu hỏi về hàng hóa, tư vấn dựa trên loại gia cầm (Gà, Vịt...).
-      - Trả lời tiếng Việt, ngắn gọn, chuyên nghiệp.
-      - Dùng Markdown để định dạng danh sách đẹp mắt.
+      DANH SÁCH NỢ:
+      ${debtors || "Không có ai nợ."}
+      
+      CÂU HỎI NGƯỜI DÙNG: "${query}"
+      
+      YÊU CẦU TRẢ LỜI:
+      1. Trả lời bằng tiếng Việt tự nhiên, thân thiện.
+      2. Dựa chính xác vào dữ liệu trên. Nếu không có dữ liệu, hãy nói không biết.
+      3. Nếu hỏi về nợ, hãy liệt kê tên và số tiền.
+      4. Nếu hỏi mua gì, hãy tư vấn các mặt hàng còn nhiều tồn kho.
+      5. Sử dụng định dạng Markdown (in đậm **text**, gạch đầu dòng) để dễ đọc.
     `;
 
     const response = await ai.models.generateContent({
@@ -61,9 +86,9 @@ export const analyzeBusinessData = async (
       contents: context,
     });
 
-    return response.text || "Tôi không tìm thấy câu trả lời.";
+    return response.text || "Tôi không tìm thấy câu trả lời phù hợp.";
   } catch (error) {
     console.error("Gemini Analysis Error:", error);
-    return "Xin lỗi, tôi đang gặp sự cố khi phân tích dữ liệu.";
+    return "Xin lỗi, tôi đang gặp sự cố khi phân tích dữ liệu. Hãy thử lại sau.";
   }
 };

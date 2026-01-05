@@ -7,21 +7,49 @@ import SalesHistory from './components/SalesHistory';
 import DealerManager from './components/DealerManager';
 import DebtManager from './components/DebtManager';
 import AIAssistant from './components/AIAssistant';
-import { ViewState, Product, Order, Customer } from './types';
+import Login from './components/Login';
+import ChangePasswordModal from './components/ChangePasswordModal';
+
+import { ViewState, Product, Order, Customer, PaymentRecord } from './types';
 import { getProducts, saveProducts, getOrders, saveOrders, getCustomers, saveCustomers } from './services/storage';
+import { isAuthenticated, setSession } from './services/auth';
 
 const App: React.FC = () => {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isChangePassOpen, setIsChangePassOpen] = useState(false);
+
   const [currentView, setCurrentView] = useState<ViewState>('dashboard');
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
 
+  // Check Auth on Mount
+  useEffect(() => {
+    if (isAuthenticated()) {
+      setIsLoggedIn(true);
+    }
+  }, []);
+
   // Load initial data
   useEffect(() => {
-    setProducts(getProducts());
-    setOrders(getOrders());
-    setCustomers(getCustomers());
-  }, []);
+    if (isLoggedIn) {
+      setProducts(getProducts());
+      setOrders(getOrders());
+      setCustomers(getCustomers());
+    }
+  }, [isLoggedIn]);
+
+  const handleLoginSuccess = () => {
+    setIsLoggedIn(true);
+  };
+
+  const handleLogout = () => {
+    if (window.confirm('Bạn có chắc muốn đăng xuất?')) {
+      setSession(false);
+      setIsLoggedIn(false);
+      setCurrentView('dashboard'); // Reset view
+    }
+  };
 
   // Product Handlers
   const handleAddProduct = (product: Product) => {
@@ -66,15 +94,72 @@ const App: React.FC = () => {
   };
 
   // Order Handlers
-  const handleCheckout = (order: Order) => {
-    // 1. Save Order
-    const updatedOrders = [...orders, order];
+  const handleCheckout = (newOrder: Order) => {
+    // 1. Calculate Surplus Logic (Gạch nợ tự động)
+    let surplus = 0;
+    const finalNewOrder = { ...newOrder };
+
+    // If customer pays more than the order total
+    if (finalNewOrder.paidAmount > finalNewOrder.total) {
+        surplus = finalNewOrder.paidAmount - finalNewOrder.total;
+        // The debt for THIS order is 0. 
+        // Note: We keep paidAmount as the full amount entered to track the transaction accurately.
+        finalNewOrder.debt = 0;
+    } else {
+        finalNewOrder.debt = finalNewOrder.total - finalNewOrder.paidAmount;
+    }
+
+    let updatedOrders = [...orders];
+
+    // 2. Distribute Surplus to Oldest Debts
+    if (surplus > 0) {
+        // Find unpaid orders for this customer, exclude the current one (obviously not in list yet, but safety check)
+        // Sort by Date ASC (Oldest first)
+        const customerDebtsIndices = updatedOrders
+            .map((order, index) => ({ ...order, originalIndex: index }))
+            .filter(o => 
+                o.customerName === finalNewOrder.customerName && 
+                o.debt > 0
+            )
+            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+        for (const debtOrder of customerDebtsIndices) {
+            if (surplus <= 0) break;
+
+            const amountToPay = Math.min(surplus, debtOrder.debt);
+            
+            // Create a payment record
+            const paymentRecord: PaymentRecord = {
+                id: `PAY-AUTO-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                date: new Date().toISOString(),
+                amount: amountToPay,
+                note: `Thanh toán cấn trừ từ đơn mới #${finalNewOrder.id.slice(-6)}`
+            };
+
+            // Update the old order in the main array
+            const targetIndex = debtOrder.originalIndex;
+            const orderToUpdate = updatedOrders[targetIndex];
+            
+            updatedOrders[targetIndex] = {
+                ...orderToUpdate,
+                paidAmount: orderToUpdate.paidAmount + amountToPay,
+                debt: orderToUpdate.debt - amountToPay,
+                payments: [...(orderToUpdate.payments || []), paymentRecord]
+            };
+
+            surplus -= amountToPay;
+        }
+    }
+
+    // 3. Add the new order
+    updatedOrders = [...updatedOrders, finalNewOrder];
+    
     setOrders(updatedOrders);
     saveOrders(updatedOrders);
 
-    // 2. Update Inventory
+    // 4. Update Inventory
     const updatedProducts = products.map(p => {
-      const soldItem = order.items.find(i => i.id === p.id);
+      const soldItem = finalNewOrder.items.find(i => i.id === p.id);
       if (soldItem) {
         return { ...p, stock: Math.max(0, p.stock - soldItem.quantity) };
       }
@@ -99,6 +184,7 @@ const App: React.FC = () => {
           <POS 
             products={products} 
             customers={customers}
+            orders={orders} // Added orders prop here
             onCheckout={handleCheckout} 
             onAddCustomer={handleAddCustomer}
           />
@@ -138,20 +224,28 @@ const App: React.FC = () => {
     }
   };
 
+  if (!isLoggedIn) {
+    return <Login onLoginSuccess={handleLoginSuccess} />;
+  }
+
   return (
     <div className="flex h-screen h-[100dvh] bg-[#f3f4f6] overflow-hidden">
-      <Sidebar currentView={currentView} onChangeView={setCurrentView} />
+      <Sidebar 
+        currentView={currentView} 
+        onChangeView={setCurrentView} 
+        onLogout={handleLogout}
+        onChangePassword={() => setIsChangePassOpen(true)}
+      />
       <main className="flex-1 overflow-y-auto w-full">
-        {/* 
-            Responsive Padding Logic:
-            - Mobile Portrait: p-4 pb-28 (Increased bottom padding for mobile cart toggle)
-            - Mobile Landscape: landscape:pl-20 landscape:pb-4
-            - Desktop: lg:pl-8 lg:pb-8
-        */}
         <div className="p-4 pb-28 landscape:pb-4 landscape:pl-20 lg:pl-8 lg:pb-8 max-w-7xl mx-auto min-h-full">
             {renderContent()}
         </div>
       </main>
+
+      <ChangePasswordModal 
+        isOpen={isChangePassOpen} 
+        onClose={() => setIsChangePassOpen(false)} 
+      />
     </div>
   );
 };
