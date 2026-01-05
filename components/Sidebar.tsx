@@ -18,15 +18,20 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView }) => {
     { id: 'ai-assistant', label: 'Trợ lý AI', icon: <Sparkles size={20} /> },
   ];
 
+  // Chicken Icon URL
+  const LOGO_URL = "https://cdn-icons-png.flaticon.com/512/616/616554.png";
+
   return (
     <>
       {/* Desktop Sidebar (Left - Large Screens) */}
       <div className="hidden lg:flex w-64 bg-white h-screen flex-col border-r border-gray-200 sticky top-0 left-0 shrink-0">
-        <div className="h-16 flex items-center justify-start px-6 border-b border-gray-100">
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-xl shadow-md">
-              Q
-          </div>
-          <span className="ml-3 font-bold text-gray-800 text-lg">Sales Manager</span>
+        <div className="h-16 flex items-center justify-start px-6 border-b border-gray-100 gap-3">
+          <img 
+            src={LOGO_URL} 
+            alt="Logo" 
+            className="w-10 h-10 object-contain drop-shadow-sm"
+          />
+          <span className="font-bold text-gray-800 text-lg truncate">HoangTran_BanGa</span>
         </div>
 
         <nav className="flex-1 py-6 px-3 space-y-1 overflow-y-auto">
@@ -61,7 +66,11 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView }) => {
       {/* Mobile Landscape Sidebar (Left Rail - Small Height/Wide Width) */}
       <div className="hidden landscape:flex lg:hidden fixed left-0 top-0 bottom-0 w-16 bg-white border-r border-gray-200 flex-col z-50 overflow-y-auto no-scrollbar pb-2">
          <div className="h-14 flex items-center justify-center border-b border-gray-100 shrink-0">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-lg">Q</div>
+            <img 
+                src={LOGO_URL} 
+                alt="Logo" 
+                className="w-8 h-8 object-contain"
+            />
          </div>
          <nav className="flex-1 py-2 flex flex-col items-center gap-2">
              {menuItems.map((item) => (
