@@ -201,51 +201,51 @@ const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, onUpdateP
   };
 
   return (
-    <div className="space-y-6 relative">
+    <div className="space-y-4 md:space-y-6 relative">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-            <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+            <h2 className="text-xl md:text-2xl font-bold text-gray-800 flex items-center gap-2">
                 <Feather className="text-blue-600"/> Quản lý Kho Hàng
             </h2>
             <p className="text-gray-500 text-sm mt-1">Quản lý nhập xuất, thông tin giống và tồn kho</p>
         </div>
         <button 
           onClick={() => openProductModal()}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors shadow-sm font-medium"
+          className="w-full sm:w-auto flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors shadow-sm font-medium"
         >
           <Plus size={20} /> Thêm Sản phẩm
         </button>
       </div>
 
       {/* Toolbar */}
-      <div className="flex flex-col sm:flex-row gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+      <div className="flex flex-col sm:flex-row gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100 sticky top-0 z-20">
         <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
             <input 
             type="text" 
-            placeholder="Tìm kiếm theo tên, mã, loại..." 
+            placeholder="Tìm kiếm..." 
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-gray-50 focus:bg-white transition-all"
             />
         </div>
-        <div className="flex items-center gap-2">
-            <div className="flex items-center bg-gray-50 rounded-lg p-1 border border-gray-200">
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 sm:pb-0">
+            <div className="flex items-center bg-gray-50 rounded-lg p-1 border border-gray-200 shrink-0">
                 <button 
                     onClick={() => setFilterStatus('all')}
-                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${filterStatus === 'all' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap ${filterStatus === 'all' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                 >
                     Tất cả
                 </button>
                 <button 
                     onClick={() => setFilterStatus('low')}
-                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-1 ${filterStatus === 'low' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-1 whitespace-nowrap ${filterStatus === 'low' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                 >
                     <AlertTriangle size={14}/> Sắp hết
                 </button>
                 <button 
                     onClick={() => setFilterStatus('out')}
-                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${filterStatus === 'out' ? 'bg-white text-red-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap ${filterStatus === 'out' ? 'bg-white text-red-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                 >
                     Hết hàng
                 </button>
@@ -253,9 +253,10 @@ const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, onUpdateP
         </div>
       </div>
 
-      {/* Product Table */}
+      {/* Responsive Product Table/List */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Desktop Table Header - Hidden on Mobile */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead className="bg-gray-50/50 border-b border-gray-200">
               <tr>
@@ -342,20 +343,70 @@ const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, onUpdateP
                     </tr>
                 );
               })}
-              {filteredProducts.length === 0 && (
-                <tr>
-                    <td colSpan={6} className="p-12 text-center">
-                        <div className="flex flex-col items-center justify-center text-gray-400">
-                            <Search size={48} className="mb-4 opacity-20"/>
-                            <p className="text-lg font-medium">Không tìm thấy sản phẩm nào</p>
-                            <p className="text-sm">Thử tìm từ khóa khác hoặc thêm sản phẩm mới</p>
-                        </div>
-                    </td>
-                </tr>
-              )}
             </tbody>
           </table>
         </div>
+
+        {/* Mobile List View (Cards) - Optimized for Landscape Grid */}
+        <div className="md:hidden grid grid-cols-1 landscape:grid-cols-2 gap-3 p-3">
+           {filteredProducts.map(product => {
+                const status = getStockStatus(product);
+                return (
+                    <div key={product.id} className="p-4 bg-gray-50/50 rounded-xl border border-gray-100 flex flex-col gap-3">
+                        <div className="flex gap-3">
+                            <div className="w-20 h-20 rounded-xl overflow-hidden bg-gray-50 border border-gray-100 shrink-0">
+                                <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <div className="flex justify-between items-start">
+                                    <h4 className="font-bold text-gray-900 truncate pr-2">{product.name}</h4>
+                                    <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-600 shrink-0">
+                                        {product.category}
+                                    </span>
+                                </div>
+                                <p className="text-sm text-gray-500 line-clamp-1 mt-0.5 mb-1">{product.description}</p>
+                                <div className="flex items-center justify-between mt-2">
+                                    <span className="font-bold text-blue-600">{product.price.toLocaleString('vi-VN')} ₫</span>
+                                    {status === 'out' && <span className="text-xs text-red-600 font-bold bg-red-50 px-2 py-0.5 rounded-full">Hết hàng</span>}
+                                    {status === 'low' && <span className="text-xs text-orange-600 font-bold bg-orange-50 px-2 py-0.5 rounded-full">Sắp hết ({product.stock})</span>}
+                                    {status === 'in' && <span className="text-xs text-green-600 font-bold bg-green-50 px-2 py-0.5 rounded-full">Còn {product.stock}</span>}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex gap-2 pt-2 border-t border-dashed border-gray-200">
+                            <button 
+                                onClick={() => openImportModal(product)} 
+                                className="flex-1 py-2 text-teal-700 bg-teal-50 rounded-lg text-sm font-semibold flex items-center justify-center gap-1 hover:bg-teal-100"
+                            >
+                                <ArrowDownCircle size={16} /> Nhập hàng
+                            </button>
+                            <button 
+                                onClick={() => openProductModal(product)} 
+                                className="flex-1 py-2 text-blue-700 bg-blue-50 rounded-lg text-sm font-semibold flex items-center justify-center gap-1 hover:bg-blue-100"
+                            >
+                                <Edit2 size={16} /> Sửa
+                            </button>
+                            <button 
+                                onClick={() => onDeleteProduct(product.id)} 
+                                className="w-10 flex items-center justify-center text-red-600 bg-red-50 rounded-lg hover:bg-red-100"
+                            >
+                                <Trash2 size={16} />
+                            </button>
+                        </div>
+                    </div>
+                );
+           })}
+        </div>
+
+        {filteredProducts.length === 0 && (
+            <div className="p-12 text-center">
+                <div className="flex flex-col items-center justify-center text-gray-400">
+                    <Search size={48} className="mb-4 opacity-20"/>
+                    <p className="text-lg font-medium">Không tìm thấy sản phẩm nào</p>
+                    <p className="text-sm">Thử tìm từ khóa khác hoặc thêm sản phẩm mới</p>
+                </div>
+            </div>
+        )}
       </div>
 
       {/* Add/Edit Product Modal */}
@@ -486,7 +537,7 @@ const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, onUpdateP
                                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-bold">₫</span>
                             </div>
                             <p className="text-[10px] text-gray-500 mt-1 flex items-center gap-1">
-                                <TrendingUp size={10}/> Thay đổi giá sẽ được lưu vào lịch sử
+                                <TrendingUp size={10}/> Lưu lịch sử khi đổi giá
                             </p>
                         </div>
                     </div>
@@ -525,7 +576,7 @@ const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, onUpdateP
                                 className="text-xs flex items-center gap-1 text-purple-600 hover:text-purple-700 font-medium px-2 py-1 bg-purple-50 rounded-md hover:bg-purple-100 transition-colors"
                             >
                                 {isGenerating ? <Loader2 size={12} className="animate-spin"/> : <Sparkles size={12} />}
-                                Dùng AI viết mô tả
+                                AI viết mô tả
                             </button>
                         </div>
                         <textarea 
@@ -549,7 +600,7 @@ const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, onUpdateP
                 onClick={handleSaveProduct}
                 className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-sm transition-all transform active:scale-95"
               >
-                {editingProduct ? 'Cập nhật Sản phẩm' : 'Lưu Sản phẩm'}
+                {editingProduct ? 'Cập nhật' : 'Lưu Sản phẩm'}
               </button>
             </div>
           </div>
@@ -583,7 +634,7 @@ const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, onUpdateP
                             <input 
                                 type="number" 
                                 autoFocus
-                                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-teal-500 outline-none text-2xl font-bold text-teal-700 text-center"
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none text-2xl font-bold text-teal-700 text-center"
                                 value={importQuantity}
                                 onChange={e => setImportQuantity(Number(e.target.value))}
                                 placeholder="0"
@@ -615,7 +666,7 @@ const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, onUpdateP
 
       {/* Error Toast Notification */}
       {errorMessage && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-top-4 fade-in duration-200 pointer-events-none">
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[60] animate-in slide-in-from-top-4 fade-in duration-200 pointer-events-none">
           <div className="bg-red-50 border border-red-200 text-red-800 px-6 py-4 rounded-xl shadow-lg flex items-center gap-3">
               <AlertCircle size={24} className="text-red-600 shrink-0" />
               <span className="font-medium">{errorMessage}</span>
@@ -625,7 +676,7 @@ const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, onUpdateP
 
       {/* Success Modal for Import */}
       {showSuccess && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center pointer-events-none">
           <div className="absolute inset-0 bg-black/10 backdrop-blur-[1px] animate-in fade-in duration-200"></div>
           <div className="bg-white px-8 py-6 rounded-2xl shadow-xl flex flex-col items-center animate-in zoom-in-95 slide-in-from-bottom-2 duration-200 relative z-10">
               <div className="w-14 h-14 bg-green-50 rounded-full flex items-center justify-center mb-3">

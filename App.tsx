@@ -139,10 +139,16 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen bg-[#f3f4f6]">
+    <div className="flex h-screen bg-[#f3f4f6] overflow-hidden">
       <Sidebar currentView={currentView} onChangeView={setCurrentView} />
-      <main className="flex-1 overflow-y-auto p-4 lg:p-8">
-        <div className="max-w-7xl mx-auto">
+      <main className="flex-1 overflow-y-auto w-full">
+        {/* 
+            Responsive Padding Logic:
+            - Mobile Portrait: p-4 pb-24 (Bottom Nav space)
+            - Mobile Landscape: landscape:pl-20 (Left Rail space) landscape:pb-4 (No Bottom Nav)
+            - Desktop: lg:pl-8 lg:pb-8 (Sidebar is relative, standard padding)
+        */}
+        <div className="p-4 pb-24 landscape:pb-4 landscape:pl-20 lg:pl-8 lg:pb-8 max-w-7xl mx-auto min-h-full">
             {renderContent()}
         </div>
       </main>
