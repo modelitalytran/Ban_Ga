@@ -1,17 +1,17 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 
-// Cấu hình Firebase từ biến môi trường
+// Your web app's Firebase configuration
+// Cấu hình trực tiếp từ giá trị bạn cung cấp
 const firebaseConfig = {
-  apiKey: process.env.VITE_API_KEY_FIREBASE,
-  authDomain: process.env.VITE_AUTH_DOMAIN,
-  projectId: process.env.VITE_PROJECT_ID,
-  storageBucket: process.env.VITE_STORAGE_BUCKET,
-  messagingSenderId: process.env.VITE_MESSAGING_SENDER_ID,
-  appId: process.env.VITE_APP_ID
+  apiKey: "AIzaSyA3baM8X_RawiJXLtIFYr_FRZ6G1kmqtu0",
+  authDomain: "trai-ga-quan-ly.firebaseapp.com",
+  projectId: "trai-ga-quan-ly",
+  storageBucket: "trai-ga-quan-ly.firebasestorage.app",
+  messagingSenderId: "501735768824",
+  appId: "1:501735768824:web:1c1bff78c290d05612310d"
 };
 
 // Initialize Firebase
-// Note: Nếu chưa cấu hình biến môi trường, app sẽ báo lỗi.
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);

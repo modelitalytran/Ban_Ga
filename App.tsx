@@ -39,16 +39,10 @@ const App: React.FC = () => {
     let unsubscribe: () => void;
 
     if (isLoggedIn) {
-      // Check if API Key is configured
-      if (!process.env.VITE_API_KEY_FIREBASE) {
-          setSyncError("Chưa cấu hình Firebase API Key. Vui lòng thêm biến môi trường (VITE_API_KEY_FIREBASE...)");
-          setIsLoadingData(false);
-          return;
-      }
-
       setIsLoadingData(true);
       setSyncError(null);
       
+      // Kết nối trực tiếp, không cần kiểm tra biến môi trường nữa vì đã cấu hình cứng trong services/firebase.ts
       unsubscribe = listenToStore((data) => {
         setProducts(data.products || []);
         setOrders(data.orders || []);
