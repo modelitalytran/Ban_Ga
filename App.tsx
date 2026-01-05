@@ -171,7 +171,7 @@ const App: React.FC = () => {
             ...orderInput,
             paidAmount: amountForCurrentOrder,
             debt: debtForCurrentOrder,
-            note: orderInput.note || (surplus > 0 ? 'Có trả dư (tiền thừa)' : undefined)
+            note: orderInput.note || (surplus > 0 ? 'Có trả dư (tiền thừa)' : '') // Fixed: Use empty string instead of undefined
         };
 
         // 4. Add new order to list

@@ -144,10 +144,16 @@ export const listenToStore = (callback: (data: AppData) => void, onError: (msg: 
     });
 };
 
+// Helper: Sanitize data (remove undefined) before sending to Firestore
+// Firestore throws an error if any field is 'undefined'.
+const cleanPayload = (data: any): any => {
+    return JSON.parse(JSON.stringify(data));
+};
+
 // Functions to save data to Cloud
 export const saveProductsToCloud = async (products: Product[]) => {
     try {
-        await updateDoc(STORE_DOC_REF, { products });
+        await updateDoc(STORE_DOC_REF, { products: cleanPayload(products) });
     } catch (e) {
         console.error("Error saving products:", e);
         throw e;
@@ -156,7 +162,7 @@ export const saveProductsToCloud = async (products: Product[]) => {
 
 export const saveOrdersToCloud = async (orders: Order[]) => {
     try {
-        await updateDoc(STORE_DOC_REF, { orders });
+        await updateDoc(STORE_DOC_REF, { orders: cleanPayload(orders) });
     } catch (e) {
         console.error("Error saving orders:", e);
         throw e;
@@ -165,7 +171,7 @@ export const saveOrdersToCloud = async (orders: Order[]) => {
 
 export const saveCustomersToCloud = async (customers: Customer[]) => {
     try {
-        await updateDoc(STORE_DOC_REF, { customers });
+        await updateDoc(STORE_DOC_REF, { customers: cleanPayload(customers) });
     } catch (e) {
         console.error("Error saving customers:", e);
         throw e;
@@ -175,7 +181,10 @@ export const saveCustomersToCloud = async (customers: Customer[]) => {
 // New function to save both orders and products atomically (prevents race conditions)
 export const saveTransactionToCloud = async (orders: Order[], products: Product[]) => {
     try {
-        await updateDoc(STORE_DOC_REF, { orders, products });
+        await updateDoc(STORE_DOC_REF, { 
+            orders: cleanPayload(orders), 
+            products: cleanPayload(products) 
+        });
     } catch (e) {
         console.error("Error saving transaction:", e);
         throw e;

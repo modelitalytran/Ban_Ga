@@ -147,7 +147,7 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
             return item;
         });
       }
-      return [...prev, { ...product, quantity, weight }];
+      return [...prev, { ...product, quantity, weight: weight || 0 }];
     });
   };
 
@@ -296,7 +296,7 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
       saleType: saleType,
       paidAmount: finalPaidInput, 
       debt: 0, // Placeholder, will be calculated in App.tsx
-      note: saleType === 'internal' ? 'Xuất nội bộ/Tặng' : undefined,
+      note: saleType === 'internal' ? 'Xuất nội bộ/Tặng' : '', // Fixed: Use empty string instead of undefined
       discountApplied: discountRate
     };
 
