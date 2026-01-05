@@ -232,7 +232,7 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
           
           remainingDebt = 0;
       } else {
-          // Underpayment
+          // Underpayment (Mua thiếu)
           forCurrentOrder = pay;
           forOldDebt = 0;
           changeReturn = 0;
@@ -244,7 +244,7 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
           forOldDebt,
           changeReturn,
           remainingDebt, 
-          // New total outstanding debt = (Old Debt - Paid Old Debt) + New Debt from this order
+          // New total outstanding debt
           totalOutstanding: (oldDebt - forOldDebt) + remainingDebt
       };
   }, [cartTotal, paidAmount, debtInfo]);
@@ -257,14 +257,12 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
         return;
     }
 
-    // Logic: Nếu khách trả thừa tiền mà không có nợ cũ, hỏi xác nhận trả lại tiền thừa
     if (paymentAllocation.changeReturn > 0 && (debtInfo?.totalOldDebt || 0) === 0) {
         if (!window.confirm(`Khách đưa dư ${paymentAllocation.changeReturn.toLocaleString('vi-VN')}đ. Xác nhận trả lại tiền thừa cho khách?`)) {
             return;
         }
     }
     
-    // Logic: Nếu khách trả thừa tiền và CÓ trừ nợ cũ, thông báo rõ ràng
     if (paymentAllocation.forOldDebt > 0) {
          if (!window.confirm(`Đã thu dư ${paymentAllocation.forOldDebt.toLocaleString('vi-VN')}đ so với đơn này. Hệ thống sẽ tự động trừ vào nợ cũ của khách. Tiếp tục?`)) {
             return;
@@ -286,7 +284,7 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
         }
     }
 
-    // Pass the raw paidAmount to App.tsx, logic there will handle distribution
+    // Quan trọng: Gửi số tiền khách đưa thực tế, App.tsx sẽ tính toán debt
     const finalPaidInput = Number(paidAmount);
     
     const newOrder: Order = {
@@ -296,8 +294,8 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
       total: cartTotal,
       customerName: customerName,
       saleType: saleType,
-      paidAmount: finalPaidInput, // Gửi số tiền khách đưa, App.tsx sẽ xử lý logic chia tách
-      debt: 0, // Placeholder, App.tsx recalculates
+      paidAmount: finalPaidInput, 
+      debt: 0, // Placeholder, will be calculated in App.tsx
       note: saleType === 'internal' ? 'Xuất nội bộ/Tặng' : undefined,
       discountApplied: discountRate
     };
@@ -341,10 +339,10 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
             <div 
               key={product.id} 
               onClick={() => handleProductClick(product)}
-              className={`bg-white p-3 rounded-xl border shadow-sm hover:shadow-md transition-shadow cursor-pointer flex flex-col relative overflow-hidden h-[240px] md:h-auto ${product.stock === 0 ? 'opacity-60 grayscale cursor-not-allowed border-gray-100' : 'border-gray-100'}`}
+              className={`bg-white p-3 rounded-xl border shadow-sm hover:shadow-md transition-shadow cursor-pointer flex flex-col relative overflow-hidden h-full min-h-[280px] ${product.stock === 0 ? 'opacity-60 grayscale cursor-not-allowed border-gray-100' : 'border-gray-100'}`}
             >
               {product.stock === 0 && (
-                <div className="absolute inset-0 z-10 bg-white/50 flex items-center justify-center">
+                <div className="absolute inset-0 z-10 bg-white/50 flex items-center justify-center pointer-events-none">
                     <span className="bg-gray-800 text-white text-xs px-2 py-1 rounded font-bold">HẾT HÀNG</span>
                 </div>
               )}
@@ -356,15 +354,23 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
                     </div>
                 )}
               </div>
-              <h3 className="font-medium text-gray-800 text-sm mb-1 flex-1 min-h-[40px] leading-snug">{product.name}</h3>
-              <div className="mt-auto flex justify-between items-center pt-2 border-t border-gray-50">
-                <span className="text-blue-600 font-bold text-sm">
-                    {product.price.toLocaleString('vi-VN')}
-                    <span className="text-[10px] text-gray-500 font-normal">/{product.unit}</span>
-                </span>
-                <span className={`text-xs ${product.stock < (product.minStockThreshold || 10) ? 'text-orange-500 font-bold' : 'text-gray-500'}`}>
-                    Kho: {product.stock}
-                </span>
+              <h3 className="font-medium text-gray-800 text-sm mb-2 flex-1 leading-snug line-clamp-2" title={product.name}>{product.name}</h3>
+              
+              {/* Footer Section - Always Visible */}
+              <div className="mt-auto pt-3 border-t border-gray-50 flex justify-between items-end">
+                <div className="flex flex-col">
+                     <span className="text-xs text-gray-400 font-medium">Giá bán</span>
+                     <span className="text-blue-600 font-bold text-sm">
+                        {product.price.toLocaleString('vi-VN')}
+                        <span className="text-[10px] text-gray-500 font-normal">/{product.unit}</span>
+                    </span>
+                </div>
+                <div className="flex flex-col items-end">
+                    <span className="text-xs text-gray-400 font-medium">Tồn kho</span>
+                    <span className={`text-xs ${product.stock < (product.minStockThreshold || 10) ? 'text-orange-500 font-bold' : 'text-gray-600'}`}>
+                        {product.stock} con
+                    </span>
+                </div>
               </div>
             </div>
           ))}

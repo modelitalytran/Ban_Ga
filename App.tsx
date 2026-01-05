@@ -108,76 +108,71 @@ const App: React.FC = () => {
     }
   };
 
-  // --- REFACTORED CHECKOUT LOGIC ---
+  // --- REFACTORED CHECKOUT LOGIC (Robust) ---
   const handleCheckout = async (orderInput: Order) => {
     try {
-        const cashReceived = orderInput.paidAmount; // Total money handed by customer
+        const cashReceived = Number(orderInput.paidAmount) || 0; 
         const orderTotal = orderInput.total;
         
+        // Deep copy orders array to ensure state immutability
+        let updatedOrders = JSON.parse(JSON.stringify(orders)) as Order[];
+
         let amountForCurrentOrder = 0;
         let surplus = 0;
+        let debtForCurrentOrder = 0;
 
-        // 1. Calculate how much applies to the CURRENT order
+        // 1. Determine Payment Allocation for the NEW order
         if (cashReceived >= orderTotal) {
+            // Paid in full or more
             amountForCurrentOrder = orderTotal;
             surplus = cashReceived - orderTotal;
+            debtForCurrentOrder = 0;
         } else {
+            // Partial payment (Debt)
             amountForCurrentOrder = cashReceived;
             surplus = 0;
+            debtForCurrentOrder = orderTotal - cashReceived;
         }
 
-        // Clone orders to mutate safely
-        let updatedOrders = [...orders];
-
-        // 2. Handle Surplus (Pay off old debt FIFO)
+        // 2. Handle Surplus (Auto-pay old debts)
         if (surplus > 0) {
             // Find unpaid orders for this customer, sorted by Date ASC (Oldest first)
-            const unpaidOrdersIndices = updatedOrders
-                .map((o, index) => ({ ...o, originalIndex: index }))
-                .filter(o => 
-                    o.customerName === orderInput.customerName && 
-                    o.debt > 0
-                )
-                .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-            for (const oldOrder of unpaidOrdersIndices) {
+            // Using a simple loop to modify the cloned array directly
+            for (let i = 0; i < updatedOrders.length; i++) {
                 if (surplus <= 0) break;
+                
+                const oldOrder = updatedOrders[i];
+                if (oldOrder.customerName === orderInput.customerName && oldOrder.debt > 0) {
+                     const debtAmount = oldOrder.debt;
+                     const paymentAmount = Math.min(surplus, debtAmount);
+                     
+                     // Create payment record
+                     const paymentRecord: PaymentRecord = {
+                         id: `PAY-AUTO-${Date.now()}-${i}`,
+                         date: new Date().toISOString(),
+                         amount: paymentAmount,
+                         note: `Trừ nợ từ đơn mới #${orderInput.id.slice(-4)}`
+                     };
 
-                const debtAmount = oldOrder.debt;
-                const paymentAmount = Math.min(surplus, debtAmount);
+                     // Update the old order
+                     updatedOrders[i] = {
+                         ...oldOrder,
+                         paidAmount: oldOrder.paidAmount + paymentAmount,
+                         debt: oldOrder.debt - paymentAmount,
+                         payments: [...(oldOrder.payments || []), paymentRecord]
+                     };
 
-                // Create payment record
-                const paymentRecord: PaymentRecord = {
-                    id: `PAY-AUTO-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-                    date: new Date().toISOString(),
-                    amount: paymentAmount,
-                    note: `Trừ nợ từ đơn mới #${orderInput.id.slice(-4)}`
-                };
-
-                // Update the old order in the array
-                const targetIndex = oldOrder.originalIndex;
-                updatedOrders[targetIndex] = {
-                    ...updatedOrders[targetIndex],
-                    paidAmount: updatedOrders[targetIndex].paidAmount + paymentAmount,
-                    debt: updatedOrders[targetIndex].debt - paymentAmount,
-                    payments: [...(updatedOrders[targetIndex].payments || []), paymentRecord]
-                };
-
-                surplus -= paymentAmount;
+                     surplus -= paymentAmount;
+                }
             }
-            
-            // Note: If surplus > 0 here, it means "Change Returned" to customer.
-            // We DO NOT record change as revenue.
         }
 
         // 3. Create the Final New Order Object
-        // IMPORTANT: The paidAmount recorded in DB must be exactly what was applied to THIS order.
         const finalNewOrder: Order = {
             ...orderInput,
             paidAmount: amountForCurrentOrder,
-            debt: orderTotal - amountForCurrentOrder,
-            // If surplus was used for old debt, maybe add a note?
-            note: orderInput.note 
+            debt: debtForCurrentOrder,
+            note: orderInput.note || (surplus > 0 ? 'Có trả dư (tiền thừa)' : undefined)
         };
 
         // 4. Add new order to list
@@ -192,18 +187,19 @@ const App: React.FC = () => {
             return p;
         });
 
-        // 6. Save State and Cloud
+        // 6. Update State Locally FIRST (Instant UI feedback)
         setOrders(updatedOrders);
         setProducts(updatedProducts);
 
+        // 7. Save to Cloud
         await Promise.all([
             saveOrdersToCloud(updatedOrders),
             saveProductsToCloud(updatedProducts)
         ]);
 
     } catch (error) {
-        console.error("Checkout Error:", error);
-        alert("Có lỗi xảy ra khi lưu đơn hàng. Vui lòng thử lại!");
+        console.error("Checkout Logic Error:", error);
+        alert("LỖI: Không thể lưu đơn hàng. Vui lòng kiểm tra lại kết nối!");
     }
   };
 
