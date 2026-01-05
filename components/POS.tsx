@@ -267,18 +267,9 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
         return;
     }
 
-    if (paymentAllocation.changeReturn > 0 && (debtInfo?.totalOldDebt || 0) === 0) {
-        if (!window.confirm(`Khách đưa dư ${paymentAllocation.changeReturn.toLocaleString('vi-VN')}đ. Xác nhận trả lại tiền thừa cho khách?`)) {
-            return;
-        }
-    }
+    // REMOVED BLOCKING CONFIRM DIALOGS
+    // We now assume if the user clicks "Pay", they accept the allocation calculated visually
     
-    if (paymentAllocation.forOldDebt > 0) {
-         if (!window.confirm(`Đã thu dư ${paymentAllocation.forOldDebt.toLocaleString('vi-VN')}đ so với đơn này. Hệ thống sẽ tự động trừ vào nợ cũ của khách. Tiếp tục?`)) {
-            return;
-        }
-    }
-
     if (saleType === 'agency' && !selectedCustomer) {
         const confirmNew = window.confirm(`Đại lý "${customerName}" chưa có trong danh sách. Thêm mới?`);
         if (confirmNew) {

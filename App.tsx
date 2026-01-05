@@ -11,7 +11,15 @@ import Login from './components/Login';
 import ChangePasswordModal from './components/ChangePasswordModal';
 
 import { ViewState, Product, Order, Customer, PaymentRecord } from './types';
-import { listenToStore, saveProductsToCloud, saveOrdersToCloud, saveCustomersToCloud, saveTransactionToCloud } from './services/storage';
+import { 
+    listenToStore, 
+    saveProductToCloud, 
+    deleteProductFromCloud,
+    saveCustomerToCloud,
+    deleteCustomerFromCloud,
+    saveOrderToCloud,
+    saveCheckoutTransaction 
+} from './services/storage';
 import { isAuthenticated, setSession } from './services/auth';
 import { Loader2, CloudOff } from 'lucide-react';
 
@@ -40,6 +48,7 @@ const App: React.FC = () => {
       setIsLoadingData(true);
       setSyncError(null);
       
+      // The listener now aggregates data from collections automatically
       unsubscribe = listenToStore((data) => {
         setProducts(data.products || []);
         setOrders(data.orders || []);
@@ -68,54 +77,53 @@ const App: React.FC = () => {
     }
   };
 
+  // --- CRUD Operations (Granular) ---
+
   const handleAddProduct = async (product: Product) => {
-    const updated = [...products, product];
-    setProducts(updated); 
-    await saveProductsToCloud(updated);
+    // Optimistic Update
+    setProducts(prev => [...prev, product]); 
+    // Cloud Save (Granular)
+    await saveProductToCloud(product);
   };
 
   const handleUpdateProduct = async (product: Product) => {
-    const updated = products.map(p => p.id === product.id ? product : p);
-    setProducts(updated);
-    await saveProductsToCloud(updated);
+    setProducts(prev => prev.map(p => p.id === product.id ? product : p));
+    await saveProductToCloud(product);
   };
 
   const handleDeleteProduct = async (id: string) => {
     if (window.confirm("Bạn có chắc muốn xóa sản phẩm này?")) {
-        const updated = products.filter(p => p.id !== id);
-        setProducts(updated);
-        await saveProductsToCloud(updated);
+        setProducts(prev => prev.filter(p => p.id !== id));
+        await deleteProductFromCloud(id);
     }
   };
 
   const handleAddCustomer = async (customer: Customer) => {
-      const updated = [...customers, customer];
-      setCustomers(updated);
-      await saveCustomersToCloud(updated);
+      setCustomers(prev => [...prev, customer]);
+      await saveCustomerToCloud(customer);
   };
 
   const handleUpdateCustomer = async (customer: Customer) => {
-      const updated = customers.map(c => c.id === customer.id ? customer : c);
-      setCustomers(updated);
-      await saveCustomersToCloud(updated);
+      setCustomers(prev => prev.map(c => c.id === customer.id ? customer : c));
+      await saveCustomerToCloud(customer);
   };
 
   const handleDeleteCustomer = async (id: string) => {
     if (window.confirm("Bạn có chắc muốn xóa đại lý này?")) {
-        const updated = customers.filter(c => c.id !== id);
-        setCustomers(updated);
-        await saveCustomersToCloud(updated);
+        setCustomers(prev => prev.filter(c => c.id !== id));
+        await deleteCustomerFromCloud(id);
     }
   };
 
-  // --- REFACTORED CHECKOUT LOGIC (Robust) ---
+  // --- REFACTORED CHECKOUT LOGIC (Robust & Granular) ---
   const handleCheckout = async (orderInput: Order) => {
     try {
         const cashReceived = Number(orderInput.paidAmount) || 0; 
         const orderTotal = orderInput.total;
         
-        // Deep copy orders array to ensure state immutability
-        let updatedOrders = JSON.parse(JSON.stringify(orders)) as Order[];
+        // Deep copy orders array to calculate surplus/debts logic
+        let localOrders = JSON.parse(JSON.stringify(orders)) as Order[];
+        let ordersToSave: Order[] = []; // List of modified/new orders to push to cloud
 
         let amountForCurrentOrder = 0;
         let surplus = 0;
@@ -123,58 +131,62 @@ const App: React.FC = () => {
 
         // 1. Determine Payment Allocation for the NEW order
         if (cashReceived >= orderTotal) {
-            // Paid in full or more
             amountForCurrentOrder = orderTotal;
             surplus = cashReceived - orderTotal;
             debtForCurrentOrder = 0;
         } else {
-            // Partial payment (Debt)
             amountForCurrentOrder = cashReceived;
             surplus = 0;
             debtForCurrentOrder = orderTotal - cashReceived;
         }
 
         // 2. Handle Surplus (Auto-pay old debts)
+        // CRITICAL FIX: Pay oldest debt first
         if (surplus > 0) {
             // Find unpaid orders for this customer, sorted by Date ASC (Oldest first)
-            for (let i = 0; i < updatedOrders.length; i++) {
+            const unpaidOrders = localOrders
+                .filter(o => o.customerName === orderInput.customerName && o.debt > 0)
+                .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+            for (const oldOrder of unpaidOrders) {
                 if (surplus <= 0) break;
                 
-                const oldOrder = updatedOrders[i];
-                if (oldOrder.customerName === orderInput.customerName && oldOrder.debt > 0) {
-                     const debtAmount = oldOrder.debt;
-                     const paymentAmount = Math.min(surplus, debtAmount);
-                     
-                     // Create payment record
-                     const paymentRecord: PaymentRecord = {
-                         id: `PAY-AUTO-${Date.now()}-${i}`,
-                         date: new Date().toISOString(),
-                         amount: paymentAmount,
-                         note: `Trừ nợ từ đơn mới #${orderInput.id.slice(-4)}`
-                     };
+                const debtAmount = oldOrder.debt;
+                const paymentAmount = Math.min(surplus, debtAmount);
+                
+                const paymentRecord: PaymentRecord = {
+                    id: `PAY-AUTO-${Date.now()}-${oldOrder.id}`,
+                    date: new Date().toISOString(),
+                    amount: paymentAmount,
+                    note: `Trừ nợ từ đơn mới #${orderInput.id.slice(-4)}`
+                };
 
-                     // Update the old order
-                     updatedOrders[i] = {
-                         ...oldOrder,
-                         paidAmount: oldOrder.paidAmount + paymentAmount,
-                         debt: oldOrder.debt - paymentAmount,
-                         payments: [...(oldOrder.payments || []), paymentRecord]
-                     };
+                const updatedOldOrder = {
+                    ...oldOrder,
+                    paidAmount: oldOrder.paidAmount + paymentAmount,
+                    debt: oldOrder.debt - paymentAmount,
+                    payments: [...(oldOrder.payments || []), paymentRecord]
+                };
 
-                     surplus -= paymentAmount;
+                // Find index in MAIN localOrders array to update it
+                const idx = localOrders.findIndex(x => x.id === oldOrder.id);
+                if (idx !== -1) {
+                    localOrders[idx] = updatedOldOrder;
+                    ordersToSave.push(updatedOldOrder);
                 }
+
+                surplus -= paymentAmount;
             }
         }
 
         // 3. Create the Final New Order Object
-        // IMPORTANT: Manually constructing object to ensure NO UNDEFINED fields
         const finalNewOrder: Order = {
             id: orderInput.id,
             date: orderInput.date,
             items: orderInput.items.map(item => ({
                 ...item,
-                weight: item.weight || 0, // Force number, no undefined
-                priceHistory: [] // Items in order don't need history, save space
+                weight: item.weight || 0,
+                priceHistory: [] // Save space
             })),
             total: orderInput.total,
             customerName: orderInput.customerName,
@@ -182,40 +194,50 @@ const App: React.FC = () => {
             paidAmount: amountForCurrentOrder,
             debt: debtForCurrentOrder,
             discountApplied: orderInput.discountApplied || 0,
-            note: orderInput.note || '', // Trust the detailed note generated by POS
-            payments: [] // New order starts with no historical payments record
+            note: orderInput.note || '',
+            payments: [] 
         };
 
-        // 4. Add new order to list
-        updatedOrders.push(finalNewOrder);
+        // Add new order to save queue
+        ordersToSave.push(finalNewOrder);
+        // Update local state (Optimistic)
+        localOrders.push(finalNewOrder);
 
-        // 5. Update Inventory - STRICT SANITIZATION
-        // We explicitly map EVERY field to ensure no 'undefined' creeps in from existing data
-        const updatedProducts = products.map(p => {
+        // 4. Determine Products to Update (Stock reduction)
+        const productsToUpdate: Product[] = [];
+        const updatedProductsState = products.map(p => {
             const soldItem = finalNewOrder.items.find(i => i.id === p.id);
-            const stockDeduction = soldItem ? soldItem.quantity : 0;
-            
-            return {
-                id: p.id,
-                name: p.name || '',
-                category: p.category || 'Khác',
-                price: p.price || 0,
-                stock: Math.max(0, (p.stock || 0) - stockDeduction),
-                unit: p.unit || 'con',
-                description: p.description || '',
-                image: p.image || '',
-                minStockThreshold: p.minStockThreshold || 10,
-                priceHistory: p.priceHistory || []
-            };
+            if (soldItem) {
+                // Calculate new state
+                const newStock = Math.max(0, (p.stock || 0) - soldItem.quantity);
+                const updatedProduct = {
+                    id: p.id,
+                    name: p.name || '',
+                    category: p.category || 'Khác',
+                    price: p.price || 0,
+                    stock: newStock,
+                    unit: p.unit || 'con',
+                    description: p.description || '',
+                    image: p.image || '',
+                    minStockThreshold: p.minStockThreshold || 10,
+                    priceHistory: p.priceHistory || []
+                };
+                
+                // Add to save queue
+                productsToUpdate.push(updatedProduct);
+                return updatedProduct;
+            }
+            return p;
         });
 
-        // 6. Update State Locally FIRST (Instant UI feedback)
-        setOrders(updatedOrders);
-        setProducts(updatedProducts);
+        // 5. Update State Locally FIRST (Instant UI feedback)
+        // Sort orders back to DESC for UI consistency before setting state
+        const uiOrders = [...localOrders].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        setOrders(uiOrders);
+        setProducts(updatedProductsState);
 
-        // 7. Save to Cloud ATOMICALLY
-        // Sử dụng saveTransactionToCloud để lưu cùng lúc
-        await saveTransactionToCloud(updatedOrders, updatedProducts);
+        // 6. Save to Cloud ATOMICALLY (Only changed items)
+        await saveCheckoutTransaction(ordersToSave, productsToUpdate);
 
     } catch (error) {
         console.error("Checkout Logic Error:", error);
@@ -224,49 +246,54 @@ const App: React.FC = () => {
   };
 
   const handleUpdateOrder = async (order: Order) => {
-    const updatedOrders = orders.map(o => o.id === order.id ? order : o);
-    setOrders(updatedOrders);
-    await saveOrdersToCloud(updatedOrders);
+    setOrders(prev => prev.map(o => o.id === order.id ? order : o));
+    await saveOrderToCloud(order);
   };
 
   const handleEditOrder = async (updatedOrder: Order, originalOrder: Order) => {
       let tempProducts = [...products];
+      const productsToUpdate: Product[] = [];
       
-      // Revert stock
+      // Helper to find/update product in list
+      const updateStock = (productId: string, qtyChange: number) => {
+          const idx = tempProducts.findIndex(p => p.id === productId);
+          if (idx !== -1) {
+              const p = tempProducts[idx];
+              const newStock = Math.max(0, (p.stock || 0) + qtyChange);
+              const updatedP = {
+                  ...p,
+                  stock: newStock,
+                  minStockThreshold: p.minStockThreshold || 10,
+                  priceHistory: p.priceHistory || []
+              };
+              tempProducts[idx] = updatedP;
+              
+              // Add to save queue (upsert logic if same product modded twice)
+              const existingQueueIdx = productsToUpdate.findIndex(x => x.id === productId);
+              if (existingQueueIdx !== -1) {
+                  productsToUpdate[existingQueueIdx] = updatedP;
+              } else {
+                  productsToUpdate.push(updatedP);
+              }
+          }
+      };
+
+      // 1. Revert stock from original order (Add back)
       originalOrder.items.forEach(oldItem => {
-          const productIndex = tempProducts.findIndex(p => p.id === oldItem.id);
-          if (productIndex !== -1) {
-              const p = tempProducts[productIndex];
-              tempProducts[productIndex] = {
-                  ...p,
-                  stock: (p.stock || 0) + oldItem.quantity,
-                  minStockThreshold: p.minStockThreshold || 10,
-                  priceHistory: p.priceHistory || []
-              };
-          }
+          updateStock(oldItem.id, oldItem.quantity);
       });
 
-      // Deduct new stock
+      // 2. Deduct stock for new order items (Subtract)
       updatedOrder.items.forEach(newItem => {
-          const productIndex = tempProducts.findIndex(p => p.id === newItem.id);
-          if (productIndex !== -1) {
-              const p = tempProducts[productIndex];
-              tempProducts[productIndex] = {
-                  ...p,
-                  stock: Math.max(0, (p.stock || 0) - newItem.quantity),
-                  minStockThreshold: p.minStockThreshold || 10,
-                  priceHistory: p.priceHistory || []
-              };
-          }
+          updateStock(newItem.id, -newItem.quantity);
       });
 
-      const updatedOrders = orders.map(o => o.id === updatedOrder.id ? updatedOrder : o);
-      
+      // Update State
       setProducts(tempProducts);
-      setOrders(updatedOrders);
+      setOrders(prev => prev.map(o => o.id === updatedOrder.id ? updatedOrder : o));
 
-      // Use atomic save here too
-      await saveTransactionToCloud(updatedOrders, tempProducts);
+      // Save Transaction (Update Order + Update Modified Products)
+      await saveCheckoutTransaction([updatedOrder], productsToUpdate);
       
       alert(`Đã cập nhật đơn hàng #${updatedOrder.id.slice(-6)} và điều chỉnh tồn kho.`);
   };

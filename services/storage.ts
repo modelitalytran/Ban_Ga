@@ -1,152 +1,33 @@
 import { Product, Order, Customer } from '../types';
 import { db } from './firebase';
-import { doc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
+import { 
+    doc, 
+    onSnapshot, 
+    setDoc, 
+    updateDoc, 
+    collection, 
+    writeBatch, 
+    getDoc, 
+    deleteDoc, 
+    runTransaction,
+    QuerySnapshot,
+    DocumentData
+} from 'firebase/firestore';
 
-// Mock data for initialization
-const MOCK_PRODUCTS: Product[] = [
-  {
-    id: '1',
-    name: 'Gà Minh Dư Bình Định',
-    category: 'Gà',
-    price: 120000,
-    stock: 200,
-    unit: 'kg',
-    description: 'Giống gà Minh Dư chính gốc, thịt chắc, lông đẹp.',
-    image: 'https://images.unsplash.com/photo-1548550023-2bdb3c5beed7?q=80&w=200&auto=format&fit=crop',
-    minStockThreshold: 50
-  },
-  {
-    id: '2',
-    name: 'Gà CP Lai Chọi',
-    category: 'Gà',
-    price: 95000,
-    stock: 500,
-    unit: 'kg',
-    description: 'Gà CP lớn nhanh, thích hợp nuôi thịt công nghiệp.',
-    image: 'https://images.unsplash.com/photo-1612170139146-37330761e053?q=80&w=200&auto=format&fit=crop',
-    minStockThreshold: 100
-  },
-  {
-    id: '3',
-    name: 'Vịt Xiêm (Ngan)',
-    category: 'Vịt',
-    price: 75000,
-    stock: 80,
-    unit: 'kg',
-    description: 'Vịt Xiêm đen, thịt nạc, ít mỡ, nuôi thả vườn.',
-    image: 'https://images.unsplash.com/photo-1555855853-9f552600868c?q=80&w=200&auto=format&fit=crop',
-    minStockThreshold: 20
-  },
-  {
-    id: '4',
-    name: 'Vịt Đồng (Vịt cỏ)',
-    category: 'Vịt',
-    price: 80000,
-    stock: 150,
-    unit: 'con',
-    description: 'Vịt chạy đồng, thịt thơm ngọt tự nhiên.',
-    image: 'https://images.unsplash.com/photo-1516467508483-a7212060cb6e?q=80&w=200&auto=format&fit=crop',
-    minStockThreshold: 30
-  },
-  {
-    id: '5',
-    name: 'Bồ Câu Pháp Titan',
-    category: 'Bồ câu',
-    price: 250000,
-    stock: 40,
-    unit: 'con',
-    description: 'Cặp bồ câu Pháp giống, to con, sinh sản tốt. Giá tính theo cặp/con.',
-    image: 'https://images.unsplash.com/photo-1544453531-152864f77c8e?q=80&w=200&auto=format&fit=crop',
-    minStockThreshold: 10
-  },
-  {
-    id: '6',
-    name: 'Bồ Câu Mĩ (King)',
-    category: 'Bồ câu',
-    price: 400000,
-    stock: 10,
-    unit: 'con',
-    description: 'Bồ câu vua, kích thước lớn, làm cảnh hoặc thịt cao cấp.',
-    image: 'https://images.unsplash.com/photo-1563220448-b3d978a3ce28?q=80&w=200&auto=format&fit=crop',
-    minStockThreshold: 5
-  }
-];
+// --- CONSTANTS ---
+const PRODUCTS_COL_NAME = 'products';
+const ORDERS_COL_NAME = 'orders';
+const CUSTOMERS_COL_NAME = 'customers';
+const OLD_STORE_DOC_REF = doc(db, 'data', 'main_store'); // Reference to old monolithic doc
 
-const MOCK_CUSTOMERS: Customer[] = [
-  { id: 'c1', name: 'Đại lý Anh Ba', type: 'agency', discountRate: 10, phone: '0901234567', address: 'Chợ Huyện' },
-  { id: 'c2', name: 'Trại gà Chú Tư', type: 'agency', discountRate: 15, phone: '0909888777', address: 'Xã Vĩnh Lộc' },
-  { id: 'c3', name: 'Nhà hàng Hạnh Phúc', type: 'agency', discountRate: 5, phone: '0283888888', address: 'Trung tâm Thị trấn' },
-  { id: 'c4', name: 'Chị Bảy (Chợ Lớn)', type: 'agency', discountRate: 8, phone: '0912341234', address: 'Chợ Đầu mối' }
-];
-
-const MOCK_ORDERS: Order[] = [
-  {
-    id: 'ORD-001',
-    date: new Date(Date.now() - 86400000 * 65).toISOString(),
-    items: [
-      { ...MOCK_PRODUCTS[0], quantity: 10, weight: 25 },
-      { ...MOCK_PRODUCTS[2], quantity: 5, weight: 12.5 }
-    ],
-    total: 3937500,
-    customerName: 'Đại lý Anh Ba',
-    saleType: 'agency',
-    paidAmount: 2000000,
-    debt: 1937500,
-    discountApplied: 10,
-    payments: [
-        { id: 'pay1', date: new Date(Date.now() - 86400000 * 65).toISOString(), amount: 2000000, note: 'Đặt cọc' }
-    ]
-  },
-  {
-    id: 'ORD-002',
-    date: new Date(Date.now() - 86400000 * 35).toISOString(), 
-    items: [
-      { ...MOCK_PRODUCTS[4], quantity: 2 }
-    ],
-    total: 500000,
-    customerName: 'Khách lẻ vãng lai',
-    saleType: 'retail',
-    paidAmount: 500000,
-    debt: 0,
-    payments: []
-  }
-];
-
-// Document reference: all data stored in one doc for simplicity in this version
-const STORE_DOC_REF = doc(db, 'data', 'main_store');
-
+// --- INTERFACES ---
 export interface AppData {
     products: Product[];
     orders: Order[];
     customers: Customer[];
 }
 
-// Function to listen to realtime updates
-export const listenToStore = (callback: (data: AppData) => void, onError: (msg: string) => void) => {
-    return onSnapshot(STORE_DOC_REF, (docSnap) => {
-        if (docSnap.exists()) {
-            const data = docSnap.data() as AppData;
-            callback(data);
-        } else {
-            // Initialize DB if it doesn't exist
-            const initialData = {
-                products: MOCK_PRODUCTS,
-                orders: MOCK_ORDERS,
-                customers: MOCK_CUSTOMERS
-            };
-            setDoc(STORE_DOC_REF, initialData).catch(e => onError(e.message));
-            callback(initialData);
-        }
-    }, (error) => {
-        console.error("Firebase Sync Error:", error);
-        // User likely hasn't set up API keys or permissions yet
-        onError(`Lỗi kết nối Firebase: ${error.code}. Vui lòng kiểm tra API Key và quyền truy cập.`);
-    });
-};
-
-// Helper: Sanitize data (remove undefined) before sending to Firestore
-// Firestore throws an error if any field is 'undefined'.
-// JSON.stringify will remove keys with undefined values automatically.
+// --- HELPER: SANITIZE DATA ---
 const cleanPayload = (data: any): any => {
     try {
         return JSON.parse(JSON.stringify(data));
@@ -156,55 +37,230 @@ const cleanPayload = (data: any): any => {
     }
 };
 
-// Functions to save data to Cloud
-export const saveProductsToCloud = async (products: Product[]) => {
+// --- MIGRATION LOGIC (Run once if collections are empty) ---
+const migrateDataIfNeeded = async (
+    productsCallback: (data: Product[]) => void,
+    ordersCallback: (data: Order[]) => void,
+    customersCallback: (data: Customer[]) => void
+) => {
     try {
-        await updateDoc(STORE_DOC_REF, { products: cleanPayload(products) });
+        // Check if old data exists
+        const oldDocSnap = await getDoc(OLD_STORE_DOC_REF);
+        if (!oldDocSnap.exists()) return;
+
+        console.log("Found legacy data. Checking if migration is needed...");
+        const oldData = oldDocSnap.data() as AppData;
+
+        // Simple check: if we have legacy data but collections are likely empty (we can't easily check empty strictly without a read, but this is a heuristic)
+        // Better approach: We migrate specific items using batch. Firestore overwrites if ID exists, so it's safe to re-run.
+        
+        const batch = writeBatch(db);
+        let opCount = 0;
+        const MAX_BATCH_SIZE = 450; // Firestore limit is 500
+
+        const commitBatch = async () => {
+            if (opCount > 0) {
+                await batch.commit();
+                opCount = 0;
+            }
+        };
+
+        // 1. Migrate Products
+        if (oldData.products && Array.isArray(oldData.products)) {
+            for (const p of oldData.products) {
+                const ref = doc(db, PRODUCTS_COL_NAME, p.id);
+                batch.set(ref, cleanPayload(p));
+                opCount++;
+                if (opCount >= MAX_BATCH_SIZE) await commitBatch();
+            }
+            // Update local state immediately to prevent flicker
+            productsCallback(oldData.products);
+        }
+
+        // 2. Migrate Customers
+        if (oldData.customers && Array.isArray(oldData.customers)) {
+            for (const c of oldData.customers) {
+                const ref = doc(db, CUSTOMERS_COL_NAME, c.id);
+                batch.set(ref, cleanPayload(c));
+                opCount++;
+                if (opCount >= MAX_BATCH_SIZE) await commitBatch();
+            }
+            customersCallback(oldData.customers);
+        }
+
+        // 3. Migrate Orders
+        if (oldData.orders && Array.isArray(oldData.orders)) {
+            for (const o of oldData.orders) {
+                const ref = doc(db, ORDERS_COL_NAME, o.id);
+                batch.set(ref, cleanPayload(o));
+                opCount++;
+                if (opCount >= MAX_BATCH_SIZE) await commitBatch();
+            }
+            ordersCallback(oldData.orders);
+        }
+
+        if (opCount > 0) await batch.commit();
+        
+        console.log("Migration completed successfully.");
+        // Optional: Delete old doc to save space, but keeping it for backup is safer for now.
+        // await deleteDoc(OLD_STORE_DOC_REF); 
+
     } catch (e) {
-        console.error("Error saving products:", e);
+        console.error("Migration Error:", e);
+    }
+};
+
+
+// --- MAIN LISTENER ---
+export const listenToStore = (callback: (data: AppData) => void, onError: (msg: string) => void) => {
+    // Local cache to aggregate updates from 3 collections
+    const cache: AppData = { products: [], orders: [], customers: [] };
+    
+    // Status flags to know when initial sync is done (optional, but good for UX)
+    // We just fire callback whenever any part updates.
+    
+    // 1. Listener for Products
+    const unsubProducts = onSnapshot(collection(db, PRODUCTS_COL_NAME), (snap) => {
+        // If snapshot is empty, check for migration
+        if (snap.empty && cache.products.length === 0) {
+             // Trigger migration check asynchronously
+             migrateDataIfNeeded(
+                 (p) => { cache.products = p; callback({...cache}); },
+                 (o) => { cache.orders = o; callback({...cache}); },
+                 (c) => { cache.customers = c; callback({...cache}); }
+             );
+        }
+        
+        cache.products = snap.docs.map(d => d.data() as Product);
+        callback({ ...cache });
+    }, (err) => {
+        console.error("Products Sync Error", err);
+        onError("Lỗi đồng bộ Sản phẩm: " + err.message);
+    });
+
+    // 2. Listener for Orders
+    const unsubOrders = onSnapshot(collection(db, ORDERS_COL_NAME), (snap) => {
+        cache.orders = snap.docs.map(d => d.data() as Order);
+        // Sort orders client-side for consistent view (Desc Date)
+        cache.orders.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        callback({ ...cache });
+    }, (err) => {
+        console.error("Orders Sync Error", err);
+    });
+
+    // 3. Listener for Customers
+    const unsubCustomers = onSnapshot(collection(db, CUSTOMERS_COL_NAME), (snap) => {
+        cache.customers = snap.docs.map(d => d.data() as Customer);
+        callback({ ...cache });
+    }, (err) => {
+        console.error("Customers Sync Error", err);
+    });
+
+    return () => {
+        unsubProducts();
+        unsubOrders();
+        unsubCustomers();
+    };
+};
+
+// --- GRANULAR SAVE FUNCTIONS (To replace monolithic saves) ---
+
+// Save a single product (Add or Update)
+export const saveProductToCloud = async (product: Product) => {
+    try {
+        const ref = doc(db, PRODUCTS_COL_NAME, product.id);
+        await setDoc(ref, cleanPayload(product));
+    } catch (e) {
+        console.error("Error saving product:", e);
         throw e;
     }
 };
 
-export const saveOrdersToCloud = async (orders: Order[]) => {
+// Delete a product
+export const deleteProductFromCloud = async (id: string) => {
     try {
-        await updateDoc(STORE_DOC_REF, { orders: cleanPayload(orders) });
+        await deleteDoc(doc(db, PRODUCTS_COL_NAME, id));
     } catch (e) {
-        console.error("Error saving orders:", e);
+        console.error("Error deleting product:", e);
         throw e;
     }
 };
 
-export const saveCustomersToCloud = async (customers: Customer[]) => {
+// Save a single customer
+export const saveCustomerToCloud = async (customer: Customer) => {
     try {
-        await updateDoc(STORE_DOC_REF, { customers: cleanPayload(customers) });
+        const ref = doc(db, CUSTOMERS_COL_NAME, customer.id);
+        await setDoc(ref, cleanPayload(customer));
     } catch (e) {
-        console.error("Error saving customers:", e);
+        console.error("Error saving customer:", e);
         throw e;
     }
 };
 
-// New function to save both orders and products atomically (prevents race conditions)
-export const saveTransactionToCloud = async (orders: Order[], products: Product[]) => {
+// Delete a customer
+export const deleteCustomerFromCloud = async (id: string) => {
     try {
-        await updateDoc(STORE_DOC_REF, { 
-            orders: cleanPayload(orders), 
-            products: cleanPayload(products) 
+        await deleteDoc(doc(db, CUSTOMERS_COL_NAME, id));
+    } catch (e) {
+        console.error("Error deleting customer:", e);
+        throw e;
+    }
+};
+
+// Save a single order (Add or Update)
+export const saveOrderToCloud = async (order: Order) => {
+    try {
+        const ref = doc(db, ORDERS_COL_NAME, order.id);
+        await setDoc(ref, cleanPayload(order));
+    } catch (e) {
+        console.error("Error saving order:", e);
+        throw e;
+    }
+};
+
+// --- TRANSACTION SAVE (Checkout) ---
+// Saves multiple orders (new + updated ones) and multiple product stock updates atomically
+export const saveCheckoutTransaction = async (
+    ordersToSave: Order[], 
+    productsToUpdate: Product[]
+) => {
+    try {
+        const batch = writeBatch(db);
+
+        // 1. Queue Order Updates
+        ordersToSave.forEach(order => {
+            const ref = doc(db, ORDERS_COL_NAME, order.id);
+            batch.set(ref, cleanPayload(order));
         });
+
+        // 2. Queue Product Stock Updates
+        productsToUpdate.forEach(product => {
+            const ref = doc(db, PRODUCTS_COL_NAME, product.id);
+            batch.set(ref, cleanPayload(product));
+        });
+
+        // 3. Commit all changes
+        await batch.commit();
+        console.log("Transaction committed successfully");
     } catch (e) {
-        console.error("Error saving transaction:", e);
+        console.error("Transaction failed:", e);
         throw e;
     }
 };
 
-// Stub functions for export/import (not used in Cloud mode usually, but kept for type compatibility)
+// --- DEPRECATED STUBS (Kept to prevent crash if old references exist, but should not be used) ---
+export const saveProductsToCloud = async (products: Product[]) => { console.warn("Deprecated: Use granular saveProductToCloud"); };
+export const saveOrdersToCloud = async (orders: Order[]) => { console.warn("Deprecated: Use granular saveOrderToCloud"); };
+export const saveCustomersToCloud = async (customers: Customer[]) => { console.warn("Deprecated: Use granular saveCustomerToCloud"); };
+export const saveTransactionToCloud = async (orders: Order[], products: Product[]) => { 
+    console.error("Deprecated: saveTransactionToCloud (bulk) called. Please use saveCheckoutTransaction.");
+    // Fallback: Just try to save them all (Inefficient but works for small data)
+    // Only use for migration or emergency
+    const batch = writeBatch(db);
+    orders.forEach(o => batch.set(doc(db, ORDERS_COL_NAME, o.id), cleanPayload(o)));
+    products.forEach(p => batch.set(doc(db, PRODUCTS_COL_NAME, p.id), cleanPayload(p)));
+    await batch.commit();
+};
+
 export const exportDataToJson = () => { alert("Dữ liệu đang được lưu trên Cloud nên không cần sao lưu thủ công!"); };
 export const importDataFromJson = async () => { alert("Chức năng này chỉ khả dụng ở chế độ Offline."); return false; };
-
-// Deprecated wrappers
-export const getProducts = () => MOCK_PRODUCTS; 
-export const getOrders = () => MOCK_ORDERS;
-export const getCustomers = () => MOCK_CUSTOMERS;
-export const saveProducts = (p: any) => {};
-export const saveOrders = (o: any) => {};
-export const saveCustomers = (c: any) => {};
