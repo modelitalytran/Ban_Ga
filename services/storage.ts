@@ -146,8 +146,14 @@ export const listenToStore = (callback: (data: AppData) => void, onError: (msg: 
 
 // Helper: Sanitize data (remove undefined) before sending to Firestore
 // Firestore throws an error if any field is 'undefined'.
+// JSON.stringify will remove keys with undefined values automatically.
 const cleanPayload = (data: any): any => {
-    return JSON.parse(JSON.stringify(data));
+    try {
+        return JSON.parse(JSON.stringify(data));
+    } catch (e) {
+        console.error("Sanitization Failed:", e);
+        return data;
+    }
 };
 
 // Functions to save data to Cloud

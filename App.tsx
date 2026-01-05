@@ -115,6 +115,7 @@ const App: React.FC = () => {
         const orderTotal = orderInput.total;
         
         // Deep copy orders array to ensure state immutability
+        // This also strips undefined values locally before processing
         let updatedOrders = JSON.parse(JSON.stringify(orders)) as Order[];
 
         let amountForCurrentOrder = 0;
@@ -167,11 +168,22 @@ const App: React.FC = () => {
         }
 
         // 3. Create the Final New Order Object
+        // IMPORTANT: Manually constructing object to ensure NO UNDEFINED fields
         const finalNewOrder: Order = {
-            ...orderInput,
+            id: orderInput.id,
+            date: orderInput.date,
+            items: orderInput.items.map(item => ({
+                ...item,
+                weight: item.weight || 0 // Force number, no undefined
+            })),
+            total: orderInput.total,
+            customerName: orderInput.customerName,
+            saleType: orderInput.saleType,
             paidAmount: amountForCurrentOrder,
             debt: debtForCurrentOrder,
-            note: orderInput.note || (surplus > 0 ? 'Có trả dư (tiền thừa)' : '') // Fixed: Use empty string instead of undefined
+            discountApplied: orderInput.discountApplied || 0,
+            note: orderInput.note || (surplus > 0 ? 'Có trả dư (tiền thừa)' : ''), // Force string
+            payments: [] // New order starts with no historical payments record, initial payment tracked in paidAmount
         };
 
         // 4. Add new order to list
@@ -181,7 +193,13 @@ const App: React.FC = () => {
         const updatedProducts = products.map(p => {
             const soldItem = finalNewOrder.items.find(i => i.id === p.id);
             if (soldItem) {
-                return { ...p, stock: Math.max(0, p.stock - soldItem.quantity) };
+                return { 
+                    ...p, 
+                    stock: Math.max(0, p.stock - soldItem.quantity),
+                    // Ensure these are not undefined during map
+                    minStockThreshold: p.minStockThreshold || 10,
+                    priceHistory: p.priceHistory || []
+                };
             }
             return p;
         });
@@ -191,12 +209,12 @@ const App: React.FC = () => {
         setProducts(updatedProducts);
 
         // 7. Save to Cloud ATOMICALLY
-        // Sử dụng saveTransactionToCloud để lưu cùng lúc, tránh xung đột dữ liệu
+        // Sử dụng saveTransactionToCloud để lưu cùng lúc, hàm này đã có cleanPayload
         await saveTransactionToCloud(updatedOrders, updatedProducts);
 
     } catch (error) {
         console.error("Checkout Logic Error:", error);
-        alert("LỖI: Không thể lưu đơn hàng. Vui lòng kiểm tra lại kết nối!");
+        alert("LỖI: Không thể lưu đơn hàng. Vui lòng kiểm tra lại kết nối hoặc tải lại trang!");
     }
   };
 

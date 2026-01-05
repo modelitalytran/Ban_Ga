@@ -285,19 +285,24 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
     }
 
     // Quan trọng: Gửi số tiền khách đưa thực tế, App.tsx sẽ tính toán debt
-    const finalPaidInput = Number(paidAmount);
+    const finalPaidInput = paidAmount === '' ? 0 : Number(paidAmount);
     
+    // Create Clean Order Object
     const newOrder: Order = {
       id: `ORD-${Date.now()}`,
       date: new Date().toISOString(),
-      items: [...cart],
+      items: cart.map(item => ({
+          ...item,
+          weight: item.weight || 0 // Ensure weight is 0 if undefined
+      })),
       total: cartTotal,
       customerName: customerName,
       saleType: saleType,
       paidAmount: finalPaidInput, 
       debt: 0, // Placeholder, will be calculated in App.tsx
       note: saleType === 'internal' ? 'Xuất nội bộ/Tặng' : '', // Fixed: Use empty string instead of undefined
-      discountApplied: discountRate
+      discountApplied: discountRate || 0,
+      payments: []
     };
 
     onCheckout(newOrder);
