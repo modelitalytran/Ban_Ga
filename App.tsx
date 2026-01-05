@@ -11,7 +11,7 @@ import Login from './components/Login';
 import ChangePasswordModal from './components/ChangePasswordModal';
 
 import { ViewState, Product, Order, Customer, PaymentRecord } from './types';
-import { listenToStore, saveProductsToCloud, saveOrdersToCloud, saveCustomersToCloud } from './services/storage';
+import { listenToStore, saveProductsToCloud, saveOrdersToCloud, saveCustomersToCloud, saveTransactionToCloud } from './services/storage';
 import { isAuthenticated, setSession } from './services/auth';
 import { Loader2, CloudOff } from 'lucide-react';
 
@@ -137,7 +137,6 @@ const App: React.FC = () => {
         // 2. Handle Surplus (Auto-pay old debts)
         if (surplus > 0) {
             // Find unpaid orders for this customer, sorted by Date ASC (Oldest first)
-            // Using a simple loop to modify the cloned array directly
             for (let i = 0; i < updatedOrders.length; i++) {
                 if (surplus <= 0) break;
                 
@@ -191,11 +190,9 @@ const App: React.FC = () => {
         setOrders(updatedOrders);
         setProducts(updatedProducts);
 
-        // 7. Save to Cloud
-        await Promise.all([
-            saveOrdersToCloud(updatedOrders),
-            saveProductsToCloud(updatedProducts)
-        ]);
+        // 7. Save to Cloud ATOMICALLY
+        // Sử dụng saveTransactionToCloud để lưu cùng lúc, tránh xung đột dữ liệu
+        await saveTransactionToCloud(updatedOrders, updatedProducts);
 
     } catch (error) {
         console.error("Checkout Logic Error:", error);
@@ -239,10 +236,8 @@ const App: React.FC = () => {
       setProducts(tempProducts);
       setOrders(updatedOrders);
 
-      await Promise.all([
-          saveProductsToCloud(tempProducts),
-          saveOrdersToCloud(updatedOrders)
-      ]);
+      // Use atomic save here too
+      await saveTransactionToCloud(updatedOrders, tempProducts);
       
       alert(`Đã cập nhật đơn hàng #${updatedOrder.id.slice(-6)} và điều chỉnh tồn kho.`);
   };

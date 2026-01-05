@@ -150,6 +150,7 @@ export const saveProductsToCloud = async (products: Product[]) => {
         await updateDoc(STORE_DOC_REF, { products });
     } catch (e) {
         console.error("Error saving products:", e);
+        throw e;
     }
 };
 
@@ -158,6 +159,7 @@ export const saveOrdersToCloud = async (orders: Order[]) => {
         await updateDoc(STORE_DOC_REF, { orders });
     } catch (e) {
         console.error("Error saving orders:", e);
+        throw e;
     }
 };
 
@@ -166,6 +168,17 @@ export const saveCustomersToCloud = async (customers: Customer[]) => {
         await updateDoc(STORE_DOC_REF, { customers });
     } catch (e) {
         console.error("Error saving customers:", e);
+        throw e;
+    }
+};
+
+// New function to save both orders and products atomically (prevents race conditions)
+export const saveTransactionToCloud = async (orders: Order[], products: Product[]) => {
+    try {
+        await updateDoc(STORE_DOC_REF, { orders, products });
+    } catch (e) {
+        console.error("Error saving transaction:", e);
+        throw e;
     }
 };
 
