@@ -22,12 +22,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onLogout, 
     { id: 'ai-assistant', label: 'Trợ lý AI', icon: <Sparkles size={20} /> },
   ];
 
-  // Items to show on the bottom bar (Priority)
   const bottomNavItems = menuItems.slice(0, 4);
-  // Items to show in the "More" menu
   const moreNavItems = menuItems.slice(4);
-
-  // Chicken Icon URL
   const LOGO_URL = "https://cdn-icons-png.flaticon.com/512/616/616554.png";
 
   const handleMobileNavClick = (view: ViewState) => {
@@ -87,7 +83,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onLogout, 
         </div>
       </div>
 
-      {/* Mobile Bottom Navigation (Visible on all mobile screens < lg) */}
+      {/* Mobile Bottom Navigation */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50 px-2 py-2 safe-area-pb shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
         <div className="flex justify-between items-end">
             {bottomNavItems.map((item) => (
@@ -116,16 +112,14 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onLogout, 
         </div>
       </div>
 
-      {/* Mobile Menu Overlay (Drawer) */}
+      {/* Mobile Menu Overlay */}
       {isMobileMenuOpen && (
         <div className="lg:hidden fixed inset-0 z-[60] flex flex-col justify-end">
-            {/* Backdrop */}
             <div 
                 className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
                 onClick={() => setIsMobileMenuOpen(false)}
             ></div>
 
-            {/* Content */}
             <div className="relative bg-white rounded-t-3xl p-6 shadow-2xl animate-in slide-in-from-bottom-10 duration-300 max-h-[85vh] overflow-y-auto">
                 <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-6"></div>
                 
@@ -139,7 +133,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onLogout, 
                     </button>
                 </div>
 
-                {/* Grid for remaining nav items */}
                 <div className="grid grid-cols-4 gap-4 mb-6">
                     {moreNavItems.map(item => (
                         <button 
@@ -159,7 +152,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onLogout, 
                     ))}
                 </div>
 
-                {/* Account Actions List */}
                 <div className="space-y-3 pt-6 border-t border-gray-100">
                     <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Tài khoản</p>
                     

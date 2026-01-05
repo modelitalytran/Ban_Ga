@@ -11,12 +11,16 @@ import Login from './components/Login';
 import ChangePasswordModal from './components/ChangePasswordModal';
 
 import { ViewState, Product, Order, Customer, PaymentRecord } from './types';
-import { getProducts, saveProducts, getOrders, saveOrders, getCustomers, saveCustomers } from './services/storage';
+import { listenToStore, saveProductsToCloud, saveOrdersToCloud, saveCustomersToCloud } from './services/storage';
 import { isAuthenticated, setSession } from './services/auth';
+import { Loader2, CloudOff } from 'lucide-react';
 
 const App: React.FC = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isChangePassOpen, setIsChangePassOpen] = useState(false);
+  
+  const [isLoadingData, setIsLoadingData] = useState(true);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   const [currentView, setCurrentView] = useState<ViewState>('dashboard');
   const [products, setProducts] = useState<Product[]>([]);
@@ -30,13 +34,35 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Load initial data
+  // Realtime Data Sync
   useEffect(() => {
+    let unsubscribe: () => void;
+
     if (isLoggedIn) {
-      setProducts(getProducts());
-      setOrders(getOrders());
-      setCustomers(getCustomers());
+      // Check if API Key is configured
+      if (!process.env.VITE_API_KEY_FIREBASE) {
+          setSyncError("Chưa cấu hình Firebase API Key. Vui lòng thêm biến môi trường (VITE_API_KEY_FIREBASE...)");
+          setIsLoadingData(false);
+          return;
+      }
+
+      setIsLoadingData(true);
+      setSyncError(null);
+      
+      unsubscribe = listenToStore((data) => {
+        setProducts(data.products || []);
+        setOrders(data.orders || []);
+        setCustomers(data.customers || []);
+        setIsLoadingData(false);
+      }, (errorMsg) => {
+        setSyncError(errorMsg);
+        setIsLoadingData(false);
+      });
     }
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, [isLoggedIn]);
 
   const handleLoginSuccess = () => {
@@ -47,59 +73,58 @@ const App: React.FC = () => {
     if (window.confirm('Bạn có chắc muốn đăng xuất?')) {
       setSession(false);
       setIsLoggedIn(false);
-      setCurrentView('dashboard'); // Reset view
+      setCurrentView('dashboard'); 
     }
   };
 
   // Product Handlers
-  const handleAddProduct = (product: Product) => {
+  const handleAddProduct = async (product: Product) => {
     const updated = [...products, product];
-    setProducts(updated);
-    saveProducts(updated);
+    setProducts(updated); 
+    await saveProductsToCloud(updated);
   };
 
-  const handleUpdateProduct = (product: Product) => {
+  const handleUpdateProduct = async (product: Product) => {
     const updated = products.map(p => p.id === product.id ? product : p);
     setProducts(updated);
-    saveProducts(updated);
+    await saveProductsToCloud(updated);
   };
 
-  const handleDeleteProduct = (id: string) => {
+  const handleDeleteProduct = async (id: string) => {
     if (window.confirm("Bạn có chắc muốn xóa sản phẩm này?")) {
         const updated = products.filter(p => p.id !== id);
         setProducts(updated);
-        saveProducts(updated);
+        await saveProductsToCloud(updated);
     }
   };
 
   // Customer Handlers
-  const handleAddCustomer = (customer: Customer) => {
+  const handleAddCustomer = async (customer: Customer) => {
       const updated = [...customers, customer];
       setCustomers(updated);
-      saveCustomers(updated);
+      await saveCustomersToCloud(updated);
   };
 
-  const handleUpdateCustomer = (customer: Customer) => {
+  const handleUpdateCustomer = async (customer: Customer) => {
       const updated = customers.map(c => c.id === customer.id ? customer : c);
       setCustomers(updated);
-      saveCustomers(updated);
+      await saveCustomersToCloud(updated);
   };
 
-  const handleDeleteCustomer = (id: string) => {
+  const handleDeleteCustomer = async (id: string) => {
     if (window.confirm("Bạn có chắc muốn xóa đại lý này?")) {
         const updated = customers.filter(c => c.id !== id);
         setCustomers(updated);
-        saveCustomers(updated);
+        await saveCustomersToCloud(updated);
     }
   };
 
   // Order Handlers
-  const handleCheckout = (newOrder: Order) => {
-    // 1. Calculate Surplus Logic (Gạch nợ tự động)
+  const handleCheckout = async (newOrder: Order) => {
+    // 1. Calculate Surplus Logic
     let surplus = 0;
     const finalNewOrder = { ...newOrder };
 
-    // If customer pays more than the order total
     if (finalNewOrder.paidAmount > finalNewOrder.total) {
         surplus = finalNewOrder.paidAmount - finalNewOrder.total;
         finalNewOrder.debt = 0;
@@ -148,9 +173,6 @@ const App: React.FC = () => {
     // 3. Add the new order
     updatedOrders = [...updatedOrders, finalNewOrder];
     
-    setOrders(updatedOrders);
-    saveOrders(updatedOrders);
-
     // 4. Update Inventory
     const updatedProducts = products.map(p => {
       const soldItem = finalNewOrder.items.find(i => i.id === p.id);
@@ -159,18 +181,27 @@ const App: React.FC = () => {
       }
       return p;
     });
+
+    // Update State & Cloud
+    setOrders(updatedOrders);
     setProducts(updatedProducts);
-    saveProducts(updatedProducts);
+    
+    // Save both
+    await Promise.all([
+        saveOrdersToCloud(updatedOrders),
+        saveProductsToCloud(updatedProducts)
+    ]);
   };
 
-  const handleUpdateOrder = (order: Order) => {
+  const handleUpdateOrder = async (order: Order) => {
     const updatedOrders = orders.map(o => o.id === order.id ? order : o);
     setOrders(updatedOrders);
-    saveOrders(updatedOrders);
+    await saveOrdersToCloud(updatedOrders);
   };
 
-  const handleEditOrder = (updatedOrder: Order, originalOrder: Order) => {
-      // 1. Revert Stock from Original Order (Add back)
+  const handleEditOrder = async (updatedOrder: Order, originalOrder: Order) => {
+      // Logic for editing order and adjusting stock...
+      // 1. Revert Stock from Original Order
       let tempProducts = [...products];
       
       originalOrder.items.forEach(oldItem => {
@@ -183,7 +214,7 @@ const App: React.FC = () => {
           }
       });
 
-      // 2. Deduct Stock for Updated Order (Subtract new qty)
+      // 2. Deduct Stock for Updated Order
       updatedOrder.items.forEach(newItem => {
           const productIndex = tempProducts.findIndex(p => p.id === newItem.id);
           if (productIndex !== -1) {
@@ -199,10 +230,12 @@ const App: React.FC = () => {
       
       // 4. Save All
       setProducts(tempProducts);
-      saveProducts(tempProducts);
-      
       setOrders(updatedOrders);
-      saveOrders(updatedOrders);
+
+      await Promise.all([
+          saveProductsToCloud(tempProducts),
+          saveOrdersToCloud(updatedOrders)
+      ]);
       
       alert(`Đã cập nhật đơn hàng #${updatedOrder.id.slice(-6)} và điều chỉnh tồn kho.`);
   };
@@ -216,7 +249,7 @@ const App: React.FC = () => {
           <POS 
             products={products} 
             customers={customers}
-            orders={orders} // Added orders prop here
+            orders={orders}
             onCheckout={handleCheckout} 
             onAddCustomer={handleAddCustomer}
           />
@@ -268,7 +301,37 @@ const App: React.FC = () => {
         onLogout={handleLogout}
         onChangePassword={() => setIsChangePassOpen(true)}
       />
-      <main className="flex-1 overflow-y-auto w-full">
+      <main className="flex-1 overflow-y-auto w-full relative">
+        {/* Loading Overlay */}
+        {isLoadingData && !syncError && (
+            <div className="absolute inset-0 bg-white/90 z-50 flex items-center justify-center backdrop-blur-sm">
+                <div className="flex flex-col items-center gap-3">
+                    <Loader2 size={32} className="text-blue-600 animate-spin" />
+                    <p className="text-sm font-medium text-gray-600">Đang đồng bộ dữ liệu đám mây...</p>
+                </div>
+            </div>
+        )}
+
+        {/* Error Overlay */}
+        {syncError && (
+             <div className="absolute inset-0 bg-white/95 z-50 flex items-center justify-center p-4">
+                <div className="max-w-md w-full bg-white rounded-2xl shadow-xl border border-red-100 p-6 text-center animate-in zoom-in-95 duration-200">
+                    <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <CloudOff size={32} className="text-red-500"/>
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-800 mb-2">Lỗi Kết Nối</h3>
+                    <p className="text-gray-500 text-sm mb-6">{syncError}</p>
+                    
+                    <button 
+                        onClick={() => window.location.reload()}
+                        className="w-full py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold transition-colors"
+                    >
+                        Tải lại trang
+                    </button>
+                </div>
+            </div>
+        )}
+        
         <div className="p-4 pb-28 landscape:pb-4 landscape:pl-20 lg:pl-8 lg:pb-8 max-w-7xl mx-auto min-h-full">
             {renderContent()}
         </div>

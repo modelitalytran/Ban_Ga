@@ -3,13 +3,12 @@ import { Product, Order } from "../types";
 
 // Initialize Gemini Client
 // Lưu ý: API Key được lấy từ biến môi trường. Đảm bảo file .env hoặc cấu hình Vite đã có VITE_API_KEY hoặc tương tự.
-const apiKey = process.env.API_KEY || ''; 
-const ai = new GoogleGenAI({ apiKey: apiKey });
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const GENERATION_MODEL = 'gemini-3-flash-preview';
 
 export const generateProductDescription = async (name: string, category: string): Promise<string> => {
-  if (!apiKey) return "Chưa cấu hình API Key cho AI.";
+  if (!process.env.API_KEY) return "Chưa cấu hình API Key cho AI.";
 
   try {
     const prompt = `Viết một mô tả ngắn gọn, hấp dẫn (bằng tiếng Việt) cho một giống gia cầm hoặc sản phẩm tên là "${name}" thuộc loại "${category}". Tập trung vào chất lượng thịt, khả năng sinh trưởng hoặc đặc điểm giống. Giữ dưới 40 từ. Không dùng Markdown.`;
@@ -31,7 +30,7 @@ export const analyzeBusinessData = async (
   products: Product[], 
   orders: Order[]
 ): Promise<string> => {
-  if (!apiKey) return "Hệ thống chưa phát hiện API Key. Vui lòng cấu hình để sử dụng Trợ lý AI.";
+  if (!process.env.API_KEY) return "Hệ thống chưa phát hiện API Key. Vui lòng cấu hình để sử dụng Trợ lý AI.";
 
   try {
     // 1. Summarize Data for Context (Avoid token limit issues by aggregating)

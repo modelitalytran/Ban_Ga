@@ -1,9 +1,8 @@
 import { Product, Order, Customer } from '../types';
+import { db } from './firebase';
+import { doc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
 
-const PRODUCTS_KEY = 'poultry_app_products';
-const ORDERS_KEY = 'poultry_app_orders';
-const CUSTOMERS_KEY = 'poultry_app_customers';
-
+// Mock data for initialization
 const MOCK_PRODUCTS: Product[] = [
   {
     id: '1',
@@ -44,7 +43,7 @@ const MOCK_PRODUCTS: Product[] = [
     category: 'Vịt',
     price: 80000,
     stock: 150,
-    unit: 'con', // Vịt cỏ đôi khi bán theo con nếu nhỏ
+    unit: 'con',
     description: 'Vịt chạy đồng, thịt thơm ngọt tự nhiên.',
     image: 'https://images.unsplash.com/photo-1516467508483-a7212060cb6e?q=80&w=200&auto=format&fit=crop',
     minStockThreshold: 30
@@ -55,7 +54,7 @@ const MOCK_PRODUCTS: Product[] = [
     category: 'Bồ câu',
     price: 250000,
     stock: 40,
-    unit: 'con', // Bồ câu bán cặp/con
+    unit: 'con',
     description: 'Cặp bồ câu Pháp giống, to con, sinh sản tốt. Giá tính theo cặp/con.',
     image: 'https://images.unsplash.com/photo-1544453531-152864f77c8e?q=80&w=200&auto=format&fit=crop',
     minStockThreshold: 10
@@ -83,12 +82,12 @@ const MOCK_CUSTOMERS: Customer[] = [
 const MOCK_ORDERS: Order[] = [
   {
     id: 'ORD-001',
-    date: new Date(Date.now() - 86400000 * 65).toISOString(), // 65 days ago (Overdue > 60)
+    date: new Date(Date.now() - 86400000 * 65).toISOString(),
     items: [
-      { ...MOCK_PRODUCTS[0], quantity: 10, weight: 25 }, // 10 con, 25kg
+      { ...MOCK_PRODUCTS[0], quantity: 10, weight: 25 },
       { ...MOCK_PRODUCTS[2], quantity: 5, weight: 12.5 }
     ],
-    total: 3937500, // Calculated roughly
+    total: 3937500,
     customerName: 'Đại lý Anh Ba',
     saleType: 'agency',
     paidAmount: 2000000,
@@ -110,60 +109,74 @@ const MOCK_ORDERS: Order[] = [
     paidAmount: 500000,
     debt: 0,
     payments: []
-  },
-    {
-    id: 'ORD-003',
-    date: new Date().toISOString(), 
-    items: [
-      { ...MOCK_PRODUCTS[1], quantity: 100, weight: 220 } // 100 con, 220kg
-    ],
-    total: 17765000,
-    customerName: 'Trại gà Chú Tư',
-    saleType: 'agency',
-    paidAmount: 10000000,
-    debt: 7765000, 
-    discountApplied: 15,
-    payments: [
-        { id: 'pay2', date: new Date().toISOString(), amount: 10000000, note: 'Thanh toán đợt 1' }
-    ]
   }
 ];
 
-export const getProducts = (): Product[] => {
-  const stored = localStorage.getItem(PRODUCTS_KEY);
-  if (!stored) {
-    localStorage.setItem(PRODUCTS_KEY, JSON.stringify(MOCK_PRODUCTS));
-    return MOCK_PRODUCTS;
-  }
-  return JSON.parse(stored);
+// Document reference: all data stored in one doc for simplicity in this version
+const STORE_DOC_REF = doc(db, 'data', 'main_store');
+
+export interface AppData {
+    products: Product[];
+    orders: Order[];
+    customers: Customer[];
+}
+
+// Function to listen to realtime updates
+export const listenToStore = (callback: (data: AppData) => void, onError: (msg: string) => void) => {
+    return onSnapshot(STORE_DOC_REF, (docSnap) => {
+        if (docSnap.exists()) {
+            const data = docSnap.data() as AppData;
+            callback(data);
+        } else {
+            // Initialize DB if it doesn't exist
+            const initialData = {
+                products: MOCK_PRODUCTS,
+                orders: MOCK_ORDERS,
+                customers: MOCK_CUSTOMERS
+            };
+            setDoc(STORE_DOC_REF, initialData).catch(e => onError(e.message));
+            callback(initialData);
+        }
+    }, (error) => {
+        console.error("Firebase Sync Error:", error);
+        // User likely hasn't set up API keys or permissions yet
+        onError(`Lỗi kết nối Firebase: ${error.code}. Vui lòng kiểm tra API Key và quyền truy cập.`);
+    });
 };
 
-export const saveProducts = (products: Product[]) => {
-  localStorage.setItem(PRODUCTS_KEY, JSON.stringify(products));
+// Functions to save data to Cloud
+export const saveProductsToCloud = async (products: Product[]) => {
+    try {
+        await updateDoc(STORE_DOC_REF, { products });
+    } catch (e) {
+        console.error("Error saving products:", e);
+    }
 };
 
-export const getOrders = (): Order[] => {
-  const stored = localStorage.getItem(ORDERS_KEY);
-  if (!stored) {
-    localStorage.setItem(ORDERS_KEY, JSON.stringify(MOCK_ORDERS));
-    return MOCK_ORDERS;
-  }
-  return JSON.parse(stored);
+export const saveOrdersToCloud = async (orders: Order[]) => {
+    try {
+        await updateDoc(STORE_DOC_REF, { orders });
+    } catch (e) {
+        console.error("Error saving orders:", e);
+    }
 };
 
-export const saveOrders = (orders: Order[]) => {
-  localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
+export const saveCustomersToCloud = async (customers: Customer[]) => {
+    try {
+        await updateDoc(STORE_DOC_REF, { customers });
+    } catch (e) {
+        console.error("Error saving customers:", e);
+    }
 };
 
-export const getCustomers = (): Customer[] => {
-  const stored = localStorage.getItem(CUSTOMERS_KEY);
-  if (!stored) {
-    localStorage.setItem(CUSTOMERS_KEY, JSON.stringify(MOCK_CUSTOMERS));
-    return MOCK_CUSTOMERS;
-  }
-  return JSON.parse(stored);
-};
+// Stub functions for export/import (not used in Cloud mode usually, but kept for type compatibility)
+export const exportDataToJson = () => { alert("Dữ liệu đang được lưu trên Cloud nên không cần sao lưu thủ công!"); };
+export const importDataFromJson = async () => { alert("Chức năng này chỉ khả dụng ở chế độ Offline."); return false; };
 
-export const saveCustomers = (customers: Customer[]) => {
-  localStorage.setItem(CUSTOMERS_KEY, JSON.stringify(customers));
-};
+// Deprecated wrappers
+export const getProducts = () => MOCK_PRODUCTS; 
+export const getOrders = () => MOCK_ORDERS;
+export const getCustomers = () => MOCK_CUSTOMERS;
+export const saveProducts = (p: any) => {};
+export const saveOrders = (o: any) => {};
+export const saveCustomers = (c: any) => {};
