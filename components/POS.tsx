@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Product, CartItem, Order, SaleType, Customer } from '../types';
-import { ShoppingCart, Plus, Minus, Trash2, Search, User, DollarSign, Wallet, Tag, Check, AlertCircle, X, Clock, AlertTriangle, TrendingUp, ShoppingBag, Store, Home, ArrowRight, CreditCard, Scale } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, Trash2, Search, User, DollarSign, Wallet, Check, AlertCircle, X, Clock, AlertTriangle, Store, Home, ArrowRight, CreditCard, Scale, HandCoins } from 'lucide-react';
 
 interface POSProps {
   products: Product[];
@@ -86,19 +86,16 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
   };
 
   const handleProductClick = (product: Product) => {
-      // Check stock first
       if (product.stock <= 0) {
           showError("Sản phẩm đã hết hàng!");
           return;
       }
 
-      // If unit is KG, open modal to ask for weight
       if (product.unit === 'kg') {
           setSelectedProductForInput(product);
           setInputWeight('');
-          setInputQuantity('1'); // Default 1 head
+          setInputQuantity('1'); 
       } else {
-          // If unit is Con, just add 1 directly
           addToCart(product, 1);
       }
   };
@@ -128,8 +125,6 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
   };
 
   const addToCart = (product: Product, quantity: number, weight?: number) => {
-    // Check stock limit logic
-    // If item exists in cart, we need to sum up current quantity
     const existing = cart.find(item => item.id === product.id);
     const currentQtyInCart = existing ? existing.quantity : 0;
     
@@ -161,19 +156,11 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
   };
 
   const updateQuantity = (id: string, delta: number) => {
-      // NOTE: For 'kg' items, changing quantity with +/- buttons is tricky because weight changes too.
-      // For simplicity in this version:
-      // - 'con' items: update quantity normally.
-      // - 'kg' items: block +/- button or just update quantity (head count) without changing weight? 
-      // BETTER UX: Click item to edit. For now, let's just allow removing and re-adding for KG items, 
-      // or simplistic quantity update (head count only) which implies "re-weighing" isn't happening here.
-      
       const item = cart.find(i => i.id === id);
       const product = products.find(p => p.id === id);
       if (!item || !product) return;
 
       if (item.unit === 'kg') {
-          // If user wants to change quantity of a weighted item, better to remove and add again to be accurate
           showError("Vui lòng xóa và nhập lại để cập nhật số cân chính xác.");
           return; 
       }
@@ -213,35 +200,52 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
     setPaidAmount(cartTotal);
   }, [cartTotal]);
 
-  // --- SMART PAYMENT CALCULATION ---
+  // --- STRICT LOGIC FOR PAYMENT ALLOCATION ---
   const paymentAllocation = useMemo(() => {
       const pay = Number(paidAmount) || 0;
       const oldDebt = debtInfo?.totalOldDebt || 0;
       
       let forCurrentOrder = 0;
       let forOldDebt = 0;
-      let remainingDebt = 0;
-      let newDebt = 0;
+      let changeReturn = 0; // Tiền thừa trả khách
+      let remainingDebt = 0; // Nợ mới của đơn này (nếu thiếu)
 
       if (pay >= cartTotal) {
+          // 1. Pay full current order
           forCurrentOrder = cartTotal;
+          
+          // 2. Surplus logic
           const surplus = pay - cartTotal;
-          forOldDebt = Math.min(surplus, oldDebt);
-          remainingDebt = Math.max(0, oldDebt - forOldDebt);
-          newDebt = 0;
+          
+          if (surplus > 0) {
+              if (oldDebt > 0) {
+                  // Pay off old debt
+                  forOldDebt = Math.min(surplus, oldDebt);
+                  // Calculate remainder after paying old debt
+                  const remainingSurplus = surplus - forOldDebt;
+                  changeReturn = remainingSurplus > 0 ? remainingSurplus : 0;
+              } else {
+                  // No old debt, all surplus is change
+                  changeReturn = surplus;
+              }
+          }
+          
+          remainingDebt = 0;
       } else {
+          // Underpayment
           forCurrentOrder = pay;
           forOldDebt = 0;
-          remainingDebt = oldDebt;
-          newDebt = cartTotal - pay;
+          changeReturn = 0;
+          remainingDebt = cartTotal - pay;
       }
 
       return {
           forCurrentOrder,
           forOldDebt,
+          changeReturn,
           remainingDebt, 
-          newDebt, 
-          totalOutstanding: remainingDebt + newDebt
+          // New total outstanding debt = (Old Debt - Paid Old Debt) + New Debt from this order
+          totalOutstanding: (oldDebt - forOldDebt) + remainingDebt
       };
   }, [cartTotal, paidAmount, debtInfo]);
 
@@ -253,8 +257,22 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
         return;
     }
 
+    // Logic: Nếu khách trả thừa tiền mà không có nợ cũ, hỏi xác nhận trả lại tiền thừa
+    if (paymentAllocation.changeReturn > 0 && (debtInfo?.totalOldDebt || 0) === 0) {
+        if (!window.confirm(`Khách đưa dư ${paymentAllocation.changeReturn.toLocaleString('vi-VN')}đ. Xác nhận trả lại tiền thừa cho khách?`)) {
+            return;
+        }
+    }
+    
+    // Logic: Nếu khách trả thừa tiền và CÓ trừ nợ cũ, thông báo rõ ràng
+    if (paymentAllocation.forOldDebt > 0) {
+         if (!window.confirm(`Đã thu dư ${paymentAllocation.forOldDebt.toLocaleString('vi-VN')}đ so với đơn này. Hệ thống sẽ tự động trừ vào nợ cũ của khách. Tiếp tục?`)) {
+            return;
+        }
+    }
+
     if (saleType === 'agency' && !selectedCustomer) {
-        const confirmNew = window.confirm(`Đại lý "${customerName}" chưa có trong danh sách. Bạn có muốn thêm mới với mức chiết khấu 0% không?`);
+        const confirmNew = window.confirm(`Đại lý "${customerName}" chưa có trong danh sách. Thêm mới?`);
         if (confirmNew) {
             const newCustomer: Customer = {
                 id: `CUS-${Date.now()}`,
@@ -268,7 +286,8 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
         }
     }
 
-    const finalPaid = Number(paidAmount);
+    // Pass the raw paidAmount to App.tsx, logic there will handle distribution
+    const finalPaidInput = Number(paidAmount);
     
     const newOrder: Order = {
       id: `ORD-${Date.now()}`,
@@ -277,13 +296,15 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
       total: cartTotal,
       customerName: customerName,
       saleType: saleType,
-      paidAmount: finalPaid,
-      debt: 0, // Recalculated in App.tsx
+      paidAmount: finalPaidInput, // Gửi số tiền khách đưa, App.tsx sẽ xử lý logic chia tách
+      debt: 0, // Placeholder, App.tsx recalculates
       note: saleType === 'internal' ? 'Xuất nội bộ/Tặng' : undefined,
       discountApplied: discountRate
     };
 
     onCheckout(newOrder);
+    
+    // Reset
     setCart([]); 
     setCustomerName('');
     setSaleType('retail');
@@ -320,14 +341,14 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
             <div 
               key={product.id} 
               onClick={() => handleProductClick(product)}
-              className={`bg-white p-3 rounded-xl border shadow-sm hover:shadow-md transition-shadow cursor-pointer flex flex-col relative overflow-hidden ${product.stock === 0 ? 'opacity-60 grayscale cursor-not-allowed border-gray-100' : 'border-gray-100'}`}
+              className={`bg-white p-3 rounded-xl border shadow-sm hover:shadow-md transition-shadow cursor-pointer flex flex-col relative overflow-hidden h-[240px] md:h-auto ${product.stock === 0 ? 'opacity-60 grayscale cursor-not-allowed border-gray-100' : 'border-gray-100'}`}
             >
               {product.stock === 0 && (
                 <div className="absolute inset-0 z-10 bg-white/50 flex items-center justify-center">
                     <span className="bg-gray-800 text-white text-xs px-2 py-1 rounded font-bold">HẾT HÀNG</span>
                 </div>
               )}
-              <div className="aspect-square bg-gray-100 rounded-lg mb-3 overflow-hidden relative">
+              <div className="aspect-square bg-gray-100 rounded-lg mb-3 overflow-hidden relative shrink-0">
                 <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
                 {product.unit === 'kg' && (
                     <div className="absolute top-1 right-1 bg-white/90 p-1 rounded-md shadow-sm">
@@ -335,8 +356,8 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
                     </div>
                 )}
               </div>
-              <h3 className="font-medium text-gray-800 line-clamp-2 mb-1 text-sm">{product.name}</h3>
-              <div className="mt-auto flex justify-between items-center">
+              <h3 className="font-medium text-gray-800 text-sm mb-1 flex-1 min-h-[40px] leading-snug">{product.name}</h3>
+              <div className="mt-auto flex justify-between items-center pt-2 border-t border-gray-50">
                 <span className="text-blue-600 font-bold text-sm">
                     {product.price.toLocaleString('vi-VN')}
                     <span className="text-[10px] text-gray-500 font-normal">/{product.unit}</span>
@@ -350,25 +371,22 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
         </div>
       </div>
 
-      {/* Cart Section - Improved Layout for Mobile */}
+      {/* Cart Section */}
       <div className={`
         fixed inset-0 z-50 lg:static lg:z-auto 
         flex flex-col justify-end lg:justify-start
         transition-opacity duration-300
         ${isMobileCartOpen ? 'opacity-100 visible' : 'opacity-0 invisible lg:opacity-100 lg:visible'}
       `}>
-          {/* Backdrop for Mobile */}
           <div 
             className="absolute inset-0 bg-black/60 lg:hidden backdrop-blur-sm"
             onClick={() => setIsMobileCartOpen(false)}
           ></div>
 
-          {/* Cart Container */}
           <div className={`
             relative w-full lg:w-96 bg-white lg:rounded-2xl rounded-t-2xl shadow-2xl lg:shadow-lg border border-gray-100 flex flex-col 
-            h-[85dvh] lg:h-full animate-in slide-in-from-bottom-10 lg:animate-none
+            h-[90dvh] lg:h-full animate-in slide-in-from-bottom-10 lg:animate-none
           `}>
-             {/* Header */}
              <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50 lg:rounded-t-2xl">
                 <div className="flex items-center gap-2">
                     <div className="bg-blue-100 p-2 rounded-lg text-blue-600">
@@ -382,11 +400,10 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
                 </button>
              </div>
 
-             {/* Cart Items */}
              <div className="flex-1 overflow-y-auto p-4 space-y-4">
                 {cart.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center text-gray-400 opacity-60">
-                        <ShoppingBag size={48} className="mb-2"/>
+                        <Store size={48} className="mb-2"/>
                         <p>Giỏ hàng trống</p>
                     </div>
                 ) : (
@@ -430,9 +447,7 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
                 )}
              </div>
 
-             {/* Checkout Form */}
              <div className="p-4 bg-gray-50 border-t border-gray-100 space-y-3 lg:rounded-b-2xl">
-                 {/* 1. Customer Selection */}
                  <div className="space-y-1">
                      <label className="text-xs font-bold text-gray-500 uppercase flex justify-between">
                         Khách hàng
@@ -454,7 +469,6 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
                          </datalist>
                      </div>
 
-                     {/* SMART DEBT INFO CARD */}
                      {debtInfo && debtInfo.hasDebt && (
                         <div className={`mt-2 p-3 rounded-lg border text-sm animate-in slide-in-from-top-2 ${
                             debtInfo.status === 'danger' ? 'bg-red-50 border-red-200 text-red-900' :
@@ -465,11 +479,11 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
                                 {debtInfo.status === 'danger' ? <AlertTriangle size={18} className="text-red-600 shrink-0"/> : <Clock size={18} className="text-orange-600 shrink-0"/>}
                                 <div className="flex-1">
                                     <p className="font-bold flex items-center justify-between">
-                                        Hồ sơ công nợ
+                                        Công nợ cũ
                                         {debtInfo.status === 'danger' && <span className="bg-red-600 text-white text-[10px] px-1.5 py-0.5 rounded uppercase">Nợ xấu</span>}
                                     </p>
-                                    <p className="text-xs opacity-90 mt-0.5">
-                                        Đang nợ cũ: <span className="font-bold">{debtInfo.totalOldDebt.toLocaleString('vi-VN')}</span>
+                                    <p className="text-lg font-bold text-red-600">
+                                        {debtInfo.totalOldDebt.toLocaleString('vi-VN')}
                                     </p>
                                 </div>
                             </div>
@@ -478,13 +492,12 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
                                 onClick={handleFullPaymentClick}
                                 className="w-full mt-1 bg-white/50 hover:bg-white/80 border border-current rounded py-1.5 text-xs font-bold flex items-center justify-center gap-1 transition-colors"
                             >
-                                <CreditCard size={12}/> Thanh toán hết ({ (cartTotal + debtInfo.totalOldDebt).toLocaleString('vi-VN') })
+                                <CreditCard size={12}/> Thanh toán hết cả nợ cũ ({ (cartTotal + debtInfo.totalOldDebt).toLocaleString('vi-VN') })
                             </button>
                         </div>
                      )}
                  </div>
 
-                 {/* 2. Sale Type */}
                  <div className="grid grid-cols-3 gap-2">
                      {[
                          {id: 'retail', label: 'Bán lẻ', icon: <Store size={14}/>},
@@ -506,17 +519,15 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
                      ))}
                  </div>
 
-                 {/* 3. Totals */}
                  <div className="space-y-2 pt-2 border-t border-gray-200">
                      <div className="flex justify-between items-end">
-                         <span className="text-gray-800 font-bold">Thành tiền</span>
+                         <span className="text-gray-800 font-bold">Tổng đơn hàng</span>
                          <span className="text-xl font-bold text-blue-600">{cartTotal.toLocaleString('vi-VN')}</span>
                      </div>
                  </div>
 
-                 {/* 4. Payment Input */}
                  <div className="space-y-2">
-                     <label className="text-xs font-bold text-gray-500 uppercase flex justify-between">Khách trả</label>
+                     <label className="text-xs font-bold text-gray-500 uppercase flex justify-between">Tiền khách đưa</label>
                      <div className="relative">
                          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
                              <DollarSign size={16} />
@@ -530,25 +541,35 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
                          />
                      </div>
                      
-                     {/* SMART ALLOCATION VISUALIZATION */}
+                     {/* PAYMENT ALLOCATION VISUALIZATION */}
                      {paidAmount !== '' && (
-                         <div className="text-xs space-y-1 bg-gray-50 p-2 rounded border border-gray-100 animate-in slide-in-from-top-1">
-                             <div className="flex justify-between text-gray-600">
-                                 <span>Đơn này:</span>
-                                 <span className={paymentAllocation.forCurrentOrder < cartTotal ? 'text-red-500 font-bold' : 'text-green-600 font-bold'}>
-                                     {paymentAllocation.forCurrentOrder.toLocaleString('vi-VN')} / {cartTotal.toLocaleString('vi-VN')}
+                         <div className="text-xs space-y-1 bg-white p-3 rounded-lg border border-gray-200 shadow-sm animate-in slide-in-from-top-1">
+                             <div className="flex justify-between items-center text-gray-600 pb-1 border-b border-dashed border-gray-100">
+                                 <span>Thanh toán đơn này:</span>
+                                 <span className={`font-bold ${paymentAllocation.remainingDebt > 0 ? 'text-red-500' : 'text-green-600'}`}>
+                                     {paymentAllocation.forCurrentOrder.toLocaleString('vi-VN')}
+                                     {paymentAllocation.remainingDebt > 0 && ` (Thiếu ${paymentAllocation.remainingDebt.toLocaleString('vi-VN')})`}
                                  </span>
                              </div>
                              
-                             {debtInfo?.hasDebt && paymentAllocation.forOldDebt > 0 && (
-                                <div className="flex justify-between text-blue-600 bg-blue-50 px-1 rounded">
-                                    <span className="flex items-center gap-1"><ArrowRight size={10}/> Trừ nợ cũ:</span>
+                             {/* Show old debt deduction */}
+                             {paymentAllocation.forOldDebt > 0 && (
+                                <div className="flex justify-between text-orange-600 py-1">
+                                    <span className="flex items-center gap-1 font-medium"><ArrowRight size={10}/> Trừ nợ cũ:</span>
                                     <span className="font-bold">-{paymentAllocation.forOldDebt.toLocaleString('vi-VN')}</span>
                                 </div>
                              )}
 
+                             {/* Show Change Return */}
+                             {paymentAllocation.changeReturn > 0 && (
+                                <div className="flex justify-between text-blue-600 py-1 bg-blue-50 px-1.5 rounded -mx-1.5">
+                                    <span className="flex items-center gap-1 font-bold"><HandCoins size={12}/> Tiền thừa trả khách:</span>
+                                    <span className="font-bold">+{paymentAllocation.changeReturn.toLocaleString('vi-VN')}</span>
+                                </div>
+                             )}
+
                              <div className="border-t border-gray-200 pt-1 mt-1 flex justify-between font-bold">
-                                 <span>Tổng dư nợ còn lại:</span>
+                                 <span>Tổng nợ sau giao dịch:</span>
                                  <span className={paymentAllocation.totalOutstanding > 0 ? 'text-red-600' : 'text-green-600'}>
                                      {paymentAllocation.totalOutstanding.toLocaleString('vi-VN')}
                                  </span>
@@ -568,7 +589,6 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
           </div>
       </div>
 
-      {/* Floating Cart Button (Mobile Only) */}
       {!isMobileCartOpen && cart.length > 0 && (
           <button 
             onClick={() => setIsMobileCartOpen(true)}
@@ -581,7 +601,6 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
           </button>
       )}
 
-      {/* Input Modal for KG */}
       {selectedProductForInput && (
           <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
               <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl animate-in fade-in zoom-in duration-200">
@@ -651,7 +670,6 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
           </div>
       )}
 
-      {/* Error Toast */}
       {errorMessage && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[70] animate-in slide-in-from-top-4 fade-in duration-200 pointer-events-none">
           <div className="bg-red-50 border border-red-200 text-red-800 px-6 py-4 rounded-xl shadow-lg flex items-center gap-3">
@@ -661,7 +679,6 @@ const POS: React.FC<POSProps> = ({ products, customers, orders, onCheckout, onAd
         </div>
       )}
 
-      {/* Success Modal */}
       {showSuccess && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center pointer-events-none">
           <div className="absolute inset-0 bg-black/10 backdrop-blur-[1px] animate-in fade-in duration-200"></div>

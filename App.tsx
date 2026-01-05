@@ -27,14 +27,12 @@ const App: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
 
-  // Check Auth on Mount
   useEffect(() => {
     if (isAuthenticated()) {
       setIsLoggedIn(true);
     }
   }, []);
 
-  // Realtime Data Sync
   useEffect(() => {
     let unsubscribe: () => void;
 
@@ -42,7 +40,6 @@ const App: React.FC = () => {
       setIsLoadingData(true);
       setSyncError(null);
       
-      // Kết nối trực tiếp, không cần kiểm tra biến môi trường nữa vì đã cấu hình cứng trong services/firebase.ts
       unsubscribe = listenToStore((data) => {
         setProducts(data.products || []);
         setOrders(data.orders || []);
@@ -71,7 +68,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Product Handlers
   const handleAddProduct = async (product: Product) => {
     const updated = [...products, product];
     setProducts(updated); 
@@ -92,7 +88,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Customer Handlers
   const handleAddCustomer = async (customer: Customer) => {
       const updated = [...customers, customer];
       setCustomers(updated);
@@ -113,78 +108,103 @@ const App: React.FC = () => {
     }
   };
 
-  // Order Handlers
-  const handleCheckout = async (newOrder: Order) => {
-    // 1. Calculate Surplus Logic
-    let surplus = 0;
-    const finalNewOrder = { ...newOrder };
+  // --- REFACTORED CHECKOUT LOGIC ---
+  const handleCheckout = async (orderInput: Order) => {
+    try {
+        const cashReceived = orderInput.paidAmount; // Total money handed by customer
+        const orderTotal = orderInput.total;
+        
+        let amountForCurrentOrder = 0;
+        let surplus = 0;
 
-    if (finalNewOrder.paidAmount > finalNewOrder.total) {
-        surplus = finalNewOrder.paidAmount - finalNewOrder.total;
-        finalNewOrder.debt = 0;
-    } else {
-        finalNewOrder.debt = finalNewOrder.total - finalNewOrder.paidAmount;
-    }
-
-    let updatedOrders = [...orders];
-
-    // 2. Distribute Surplus to Oldest Debts
-    if (surplus > 0) {
-        const customerDebtsIndices = updatedOrders
-            .map((order, index) => ({ ...order, originalIndex: index }))
-            .filter(o => 
-                o.customerName === finalNewOrder.customerName && 
-                o.debt > 0
-            )
-            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-        for (const debtOrder of customerDebtsIndices) {
-            if (surplus <= 0) break;
-
-            const amountToPay = Math.min(surplus, debtOrder.debt);
-            
-            const paymentRecord: PaymentRecord = {
-                id: `PAY-AUTO-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                date: new Date().toISOString(),
-                amount: amountToPay,
-                note: `Thanh toán cấn trừ từ đơn mới #${finalNewOrder.id.slice(-6)}`
-            };
-
-            const targetIndex = debtOrder.originalIndex;
-            const orderToUpdate = updatedOrders[targetIndex];
-            
-            updatedOrders[targetIndex] = {
-                ...orderToUpdate,
-                paidAmount: orderToUpdate.paidAmount + amountToPay,
-                debt: orderToUpdate.debt - amountToPay,
-                payments: [...(orderToUpdate.payments || []), paymentRecord]
-            };
-
-            surplus -= amountToPay;
+        // 1. Calculate how much applies to the CURRENT order
+        if (cashReceived >= orderTotal) {
+            amountForCurrentOrder = orderTotal;
+            surplus = cashReceived - orderTotal;
+        } else {
+            amountForCurrentOrder = cashReceived;
+            surplus = 0;
         }
+
+        // Clone orders to mutate safely
+        let updatedOrders = [...orders];
+
+        // 2. Handle Surplus (Pay off old debt FIFO)
+        if (surplus > 0) {
+            // Find unpaid orders for this customer, sorted by Date ASC (Oldest first)
+            const unpaidOrdersIndices = updatedOrders
+                .map((o, index) => ({ ...o, originalIndex: index }))
+                .filter(o => 
+                    o.customerName === orderInput.customerName && 
+                    o.debt > 0
+                )
+                .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+            for (const oldOrder of unpaidOrdersIndices) {
+                if (surplus <= 0) break;
+
+                const debtAmount = oldOrder.debt;
+                const paymentAmount = Math.min(surplus, debtAmount);
+
+                // Create payment record
+                const paymentRecord: PaymentRecord = {
+                    id: `PAY-AUTO-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                    date: new Date().toISOString(),
+                    amount: paymentAmount,
+                    note: `Trừ nợ từ đơn mới #${orderInput.id.slice(-4)}`
+                };
+
+                // Update the old order in the array
+                const targetIndex = oldOrder.originalIndex;
+                updatedOrders[targetIndex] = {
+                    ...updatedOrders[targetIndex],
+                    paidAmount: updatedOrders[targetIndex].paidAmount + paymentAmount,
+                    debt: updatedOrders[targetIndex].debt - paymentAmount,
+                    payments: [...(updatedOrders[targetIndex].payments || []), paymentRecord]
+                };
+
+                surplus -= paymentAmount;
+            }
+            
+            // Note: If surplus > 0 here, it means "Change Returned" to customer.
+            // We DO NOT record change as revenue.
+        }
+
+        // 3. Create the Final New Order Object
+        // IMPORTANT: The paidAmount recorded in DB must be exactly what was applied to THIS order.
+        const finalNewOrder: Order = {
+            ...orderInput,
+            paidAmount: amountForCurrentOrder,
+            debt: orderTotal - amountForCurrentOrder,
+            // If surplus was used for old debt, maybe add a note?
+            note: orderInput.note 
+        };
+
+        // 4. Add new order to list
+        updatedOrders.push(finalNewOrder);
+
+        // 5. Update Inventory
+        const updatedProducts = products.map(p => {
+            const soldItem = finalNewOrder.items.find(i => i.id === p.id);
+            if (soldItem) {
+                return { ...p, stock: Math.max(0, p.stock - soldItem.quantity) };
+            }
+            return p;
+        });
+
+        // 6. Save State and Cloud
+        setOrders(updatedOrders);
+        setProducts(updatedProducts);
+
+        await Promise.all([
+            saveOrdersToCloud(updatedOrders),
+            saveProductsToCloud(updatedProducts)
+        ]);
+
+    } catch (error) {
+        console.error("Checkout Error:", error);
+        alert("Có lỗi xảy ra khi lưu đơn hàng. Vui lòng thử lại!");
     }
-
-    // 3. Add the new order
-    updatedOrders = [...updatedOrders, finalNewOrder];
-    
-    // 4. Update Inventory
-    const updatedProducts = products.map(p => {
-      const soldItem = finalNewOrder.items.find(i => i.id === p.id);
-      if (soldItem) {
-        return { ...p, stock: Math.max(0, p.stock - soldItem.quantity) };
-      }
-      return p;
-    });
-
-    // Update State & Cloud
-    setOrders(updatedOrders);
-    setProducts(updatedProducts);
-    
-    // Save both
-    await Promise.all([
-        saveOrdersToCloud(updatedOrders),
-        saveProductsToCloud(updatedProducts)
-    ]);
   };
 
   const handleUpdateOrder = async (order: Order) => {
@@ -194,10 +214,9 @@ const App: React.FC = () => {
   };
 
   const handleEditOrder = async (updatedOrder: Order, originalOrder: Order) => {
-      // Logic for editing order and adjusting stock...
-      // 1. Revert Stock from Original Order
       let tempProducts = [...products];
       
+      // Revert stock
       originalOrder.items.forEach(oldItem => {
           const productIndex = tempProducts.findIndex(p => p.id === oldItem.id);
           if (productIndex !== -1) {
@@ -208,7 +227,7 @@ const App: React.FC = () => {
           }
       });
 
-      // 2. Deduct Stock for Updated Order
+      // Deduct new stock
       updatedOrder.items.forEach(newItem => {
           const productIndex = tempProducts.findIndex(p => p.id === newItem.id);
           if (productIndex !== -1) {
@@ -219,10 +238,8 @@ const App: React.FC = () => {
           }
       });
 
-      // 3. Update Order in List
       const updatedOrders = orders.map(o => o.id === updatedOrder.id ? updatedOrder : o);
       
-      // 4. Save All
       setProducts(tempProducts);
       setOrders(updatedOrders);
 
@@ -296,7 +313,6 @@ const App: React.FC = () => {
         onChangePassword={() => setIsChangePassOpen(true)}
       />
       <main className="flex-1 overflow-y-auto w-full relative">
-        {/* Loading Overlay */}
         {isLoadingData && !syncError && (
             <div className="absolute inset-0 bg-white/90 z-50 flex items-center justify-center backdrop-blur-sm">
                 <div className="flex flex-col items-center gap-3">
@@ -306,7 +322,6 @@ const App: React.FC = () => {
             </div>
         )}
 
-        {/* Error Overlay */}
         {syncError && (
              <div className="absolute inset-0 bg-white/95 z-50 flex items-center justify-center p-4">
                 <div className="max-w-md w-full bg-white rounded-2xl shadow-xl border border-red-100 p-6 text-center animate-in zoom-in-95 duration-200">
