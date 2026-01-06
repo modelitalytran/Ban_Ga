@@ -7,11 +7,20 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, (process as any).cwd(), '');
   
   // Create an object to define process.env variables
+  // IMPORTANT: We must include NODE_ENV so React doesn't crash
   const defineValues: any = {
-    'process.env': {} 
+    'process.env': {
+        NODE_ENV: JSON.stringify(mode),
+        ...Object.keys(env).reduce((acc, key) => {
+            if (key.startsWith('VITE_') || key === 'API_KEY') {
+                acc[key] = env[key];
+            }
+            return acc;
+        }, {} as any)
+    } 
   };
 
-  // Automatically expose all VITE_ env vars and API_KEY on process.env
+  // Also expose them individually for specific replacements (higher priority)
   Object.keys(env).forEach(key => {
     if (key.startsWith('VITE_') || key === 'API_KEY') {
       defineValues[`process.env.${key}`] = JSON.stringify(env[key]);

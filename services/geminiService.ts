@@ -1,17 +1,25 @@
 import { GoogleGenAI } from "@google/genai";
 import { Product, Order } from "../types";
 
-// Initialize Gemini Client
-// Sử dụng API Key từ biến môi trường
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 // Sử dụng model ổn định cho tác vụ văn bản
 const GENERATION_MODEL = 'gemini-3-flash-preview';
+
+// Helper to get AI instance safely
+const getAI = () => {
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) {
+        console.warn("API Key is missing for Gemini AI");
+        // Return a dummy instance to prevent crash, calls will fail gracefully later
+        return new GoogleGenAI({ apiKey: '' });
+    }
+    return new GoogleGenAI({ apiKey });
+};
 
 export const generateProductDescription = async (name: string, category: string): Promise<string> => {
   if (!process.env.API_KEY) return "Chưa cấu hình API Key cho AI.";
 
   try {
+    const ai = getAI();
     const prompt = `Viết một mô tả ngắn gọn, hấp dẫn (bằng tiếng Việt) cho một giống gia cầm hoặc sản phẩm tên là "${name}" thuộc loại "${category}". Tập trung vào chất lượng thịt, khả năng sinh trưởng hoặc đặc điểm giống. Giữ dưới 40 từ. Không dùng Markdown.`;
     
     const response = await ai.models.generateContent({
@@ -34,6 +42,8 @@ export const analyzeBusinessData = async (
   if (!process.env.API_KEY) return "Hệ thống chưa phát hiện API Key. Vui lòng cấu hình biến môi trường API_KEY.";
 
   try {
+    const ai = getAI();
+    
     // 1. Summarize Data for Context (Avoid token limit issues by aggregating)
     const totalRevenue = orders.reduce((sum, o) => sum + o.total, 0);
     const totalDebt = orders.reduce((sum, o) => sum + o.debt, 0);
