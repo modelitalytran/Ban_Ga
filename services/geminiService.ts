@@ -1,10 +1,10 @@
 import { GoogleGenAI } from "@google/genai";
 import { Product, Order } from "../types";
 
-// Sử dụng model Gemini 3 Flash theo yêu cầu (nhanh và hiệu quả chi phí)
-const GENERATION_MODEL = 'gemini-3-flash-preview';
+// Chuyển sang model Gemini 2.0 Flash (Bản ổn định) để tránh lỗi 403/429 của bản Preview
+const GENERATION_MODEL = 'gemini-2.0-flash';
 
-// Key mới được cung cấp (thay thế key cũ bị lỗi 429)
+// Key mới được cung cấp
 const BACKUP_KEY = "AIzaSyCexqaObdOrr-oahBjiToKRf3XnXgUaQLQ";
 const API_KEY = process.env.API_KEY || BACKUP_KEY;
 
@@ -49,11 +49,12 @@ export const analyzeBusinessData = async (
     const ai = getAI();
     if (!ai) throw new Error("Không thể khởi tạo AI Service");
     
-    // 1. Summarize Data for Context (Avoid token limit issues by aggregating)
+    // 1. Summarize Data for Context
     const totalRevenue = orders.reduce((sum, o) => sum + o.total, 0);
     const totalDebt = orders.reduce((sum, o) => sum + o.debt, 0);
     
-    const productSummary = products.map(p => 
+    // Limit product summary to avoid context overflow if list is huge
+    const productSummary = products.slice(0, 50).map(p => 
       `- ${p.name} (${p.category}): Giá ${p.price/1000}k, Tồn ${p.stock}, ${p.stock <= (p.minStockThreshold || 10) ? 'SẮP HẾT' : 'Ổn'}`
     ).join('\n');
 
@@ -67,6 +68,7 @@ export const analyzeBusinessData = async (
     const debtors = orders
       .filter(o => o.debt > 0)
       .map(o => `- ${o.customerName}: Nợ ${o.debt/1000}k`)
+      .slice(0, 20) // Limit debtors list
       .join('\n');
 
     // 2. Build Prompt
@@ -77,7 +79,7 @@ export const analyzeBusinessData = async (
       - Tổng doanh thu: ${totalRevenue.toLocaleString('vi-VN')} VNĐ
       - Tổng nợ phải thu: ${totalDebt.toLocaleString('vi-VN')} VNĐ
       
-      KHO HÀNG:
+      KHO HÀNG (Top 50):
       ${productSummary}
       
       GIAO DỊCH GẦN ĐÂY:
@@ -92,8 +94,7 @@ export const analyzeBusinessData = async (
       1. Trả lời bằng tiếng Việt tự nhiên, thân thiện.
       2. Dựa chính xác vào dữ liệu trên. Nếu không có dữ liệu, hãy nói không biết.
       3. Nếu hỏi về nợ, hãy liệt kê tên và số tiền.
-      4. Nếu hỏi mua gì, hãy tư vấn các mặt hàng còn nhiều tồn kho.
-      5. Sử dụng định dạng Markdown (in đậm **text**, gạch đầu dòng) để dễ đọc.
+      4. Sử dụng định dạng Markdown (in đậm **text**, gạch đầu dòng) để dễ đọc.
     `;
 
     const response = await ai.models.generateContent({
@@ -104,7 +105,10 @@ export const analyzeBusinessData = async (
     return response.text || "Tôi không tìm thấy câu trả lời phù hợp.";
   } catch (error: any) {
     console.error("Gemini Analysis Error:", error);
-    // Return visible error for debugging
+    // Return visible error for debugging, specifically handling 403
+    if (error.status === 403 || (error.message && error.message.includes('403'))) {
+        return "Lỗi quyền truy cập (403). Vui lòng kiểm tra lại API Key hoặc giới hạn tài khoản.";
+    }
     return `Đã xảy ra lỗi khi kết nối AI (${error.status || error.message}). Vui lòng thử lại sau.`;
   }
 };
