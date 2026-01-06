@@ -1,24 +1,40 @@
 import { GoogleGenAI } from "@google/genai";
 import { Product, Order } from "../types";
 
-// Chuyển sang model Gemini 2.0 Flash (Bản ổn định) để tránh lỗi 403/429 của bản Preview
+// Sử dụng model Gemini 2.0 Flash (Bản ổn định)
 const GENERATION_MODEL = 'gemini-2.0-flash';
 
-// Key mới được cung cấp
-const BACKUP_KEY = "AIzaSyCexqaObdOrr-oahBjiToKRf3XnXgUaQLQ";
-const API_KEY = process.env.API_KEY || BACKUP_KEY;
+// Lấy API Key từ biến môi trường (Cấu hình trong Vercel Settings hoặc .env)
+const API_KEY = process.env.API_KEY;
 
 // Helper to get AI instance safely
 const getAI = () => {
     if (!API_KEY) {
-        console.warn("API Key is missing for Gemini AI");
         return null;
     }
     return new GoogleGenAI({ apiKey: API_KEY });
 };
 
+// Helper xử lý thông báo lỗi thân thiện
+const handleGeminiError = (error: any): string => {
+    console.error("Gemini API Error:", error);
+    const msg = typeof error === 'string' ? error : (error.message || JSON.stringify(error));
+    
+    if (msg.includes('API_KEY_INVALID') || msg.includes('400')) {
+        return "⚠️ API Key không hợp lệ. Vui lòng kiểm tra lại biến môi trường API_KEY trên Vercel.";
+    }
+    if (msg.includes('403') || msg.includes('PERMISSION_DENIED') || msg.includes('leaked')) {
+        return "⚠️ API Key bị từ chối hoặc bị lộ. Vui lòng tạo Key mới và cập nhật vào biến môi trường trên Vercel.";
+    }
+    if (msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED')) {
+        return "⚠️ Hệ thống đang bận (429). Vui lòng thử lại sau vài giây.";
+    }
+    
+    return `Lỗi kết nối AI: ${msg.substring(0, 100)}...`;
+};
+
 export const generateProductDescription = async (name: string, category: string): Promise<string> => {
-  if (!API_KEY) return "Chưa cấu hình API Key cho AI.";
+  if (!API_KEY) return "⚠️ Chưa có API Key. Vui lòng vào Vercel > Settings > Environment Variables để thêm API_KEY.";
 
   try {
     const ai = getAI();
@@ -33,8 +49,7 @@ export const generateProductDescription = async (name: string, category: string)
     
     return response.text || "Không thể tạo mô tả lúc này.";
   } catch (error: any) {
-    console.error("Gemini Error:", error);
-    return `Lỗi AI: ${error.message || "Không xác định"}`;
+    return handleGeminiError(error);
   }
 };
 
@@ -43,7 +58,7 @@ export const analyzeBusinessData = async (
   products: Product[], 
   orders: Order[]
 ): Promise<string> => {
-  if (!API_KEY) return "Hệ thống chưa phát hiện API Key. Vui lòng kiểm tra cấu hình.";
+  if (!API_KEY) return "⚠️ Hệ thống chưa có API Key. Vui lòng cấu hình biến môi trường API_KEY trên Vercel.";
 
   try {
     const ai = getAI();
@@ -104,11 +119,6 @@ export const analyzeBusinessData = async (
 
     return response.text || "Tôi không tìm thấy câu trả lời phù hợp.";
   } catch (error: any) {
-    console.error("Gemini Analysis Error:", error);
-    // Return visible error for debugging, specifically handling 403
-    if (error.status === 403 || (error.message && error.message.includes('403'))) {
-        return "Lỗi quyền truy cập (403). Vui lòng kiểm tra lại API Key hoặc giới hạn tài khoản.";
-    }
-    return `Đã xảy ra lỗi khi kết nối AI (${error.status || error.message}). Vui lòng thử lại sau.`;
+    return handleGeminiError(error);
   }
 };
