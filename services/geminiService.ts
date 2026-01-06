@@ -1,11 +1,11 @@
 import { GoogleGenAI } from "@google/genai";
 import { Product, Order } from "../types";
 
-// Sử dụng model 2.0 Flash Exp (thường ổn định hơn cho API Key cá nhân so với bản preview kín)
-const GENERATION_MODEL = 'gemini-2.0-flash-exp';
+// Sử dụng model Gemini 3 Flash theo yêu cầu (nhanh và hiệu quả chi phí)
+const GENERATION_MODEL = 'gemini-3-flash-preview';
 
-// Key dự phòng được cung cấp
-const BACKUP_KEY = "AIzaSyAuK2lYeCXXm0b7APCJ0pciy045MI5gGhM";
+// Key mới được cung cấp (thay thế key cũ bị lỗi 429)
+const BACKUP_KEY = "AIzaSyCexqaObdOrr-oahBjiToKRf3XnXgUaQLQ";
 const API_KEY = process.env.API_KEY || BACKUP_KEY;
 
 // Helper to get AI instance safely
