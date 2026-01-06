@@ -4,19 +4,22 @@ import { Product, Order } from "../types";
 // Sử dụng model ổn định cho tác vụ văn bản
 const GENERATION_MODEL = 'gemini-3-flash-preview';
 
+// Key dự phòng được cung cấp
+const BACKUP_KEY = "AIzaSyAuK2lYeCXXm0b7APCJ0pciy045MI5gGhM";
+const API_KEY = process.env.API_KEY || BACKUP_KEY;
+
 // Helper to get AI instance safely
 const getAI = () => {
-    const apiKey = process.env.API_KEY;
-    if (!apiKey) {
+    if (!API_KEY) {
         console.warn("API Key is missing for Gemini AI");
         // Return a dummy instance to prevent crash, calls will fail gracefully later
         return new GoogleGenAI({ apiKey: '' });
     }
-    return new GoogleGenAI({ apiKey });
+    return new GoogleGenAI({ apiKey: API_KEY });
 };
 
 export const generateProductDescription = async (name: string, category: string): Promise<string> => {
-  if (!process.env.API_KEY) return "Chưa cấu hình API Key cho AI.";
+  if (!API_KEY) return "Chưa cấu hình API Key cho AI.";
 
   try {
     const ai = getAI();
@@ -39,7 +42,7 @@ export const analyzeBusinessData = async (
   products: Product[], 
   orders: Order[]
 ): Promise<string> => {
-  if (!process.env.API_KEY) return "Hệ thống chưa phát hiện API Key. Vui lòng cấu hình biến môi trường API_KEY.";
+  if (!API_KEY) return "Hệ thống chưa phát hiện API Key. Vui lòng cấu hình biến môi trường API_KEY.";
 
   try {
     const ai = getAI();
