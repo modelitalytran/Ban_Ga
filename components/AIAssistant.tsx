@@ -17,7 +17,7 @@ interface Message {
 const AIAssistant: React.FC<AIAssistantProps> = ({ products, orders }) => {
   const [query, setQuery] = useState('');
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'assistant', content: 'Xin chào! Tôi là **Hoàng Trần AI**. Tôi có thể giúp gì cho việc kinh doanh hôm nay? \n\n*Ví dụ: "Hôm nay bán được bao nhiêu?", "Ai đang nợ tiền?", "Kho còn bao nhiêu gà Minh Dư?"*' }
+    { role: 'assistant', content: 'Xin chào! Tôi là **Hoang Trần AI**. Tôi có thể giúp gì cho việc kinh doanh hôm nay? \n\n*Ví dụ: "Hôm nay bán được bao nhiêu?", "Ai đang nợ tiền?", "Kho còn bao nhiêu gà Minh Dư?"*' }
   ]);
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);

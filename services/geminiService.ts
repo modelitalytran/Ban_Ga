@@ -66,7 +66,7 @@ export const analyzeBusinessData = async (
 
     // 2. Build Prompt
     const context = `
-      Bạn là trợ lý quản lý trại gà/vịt chuyên nghiệp tên là "Hoàng Trần AI".
+      Bạn là trợ lý quản lý trại gà/vịt chuyên nghiệp tên là "Hoang Trần AI".
       
       DỮ LIỆU TỔNG QUAN:
       - Tổng doanh thu: ${totalRevenue.toLocaleString('vi-VN')} VNĐ
