@@ -1,8 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
 import { Product, Order } from "../types";
 
-// Sử dụng model ổn định cho tác vụ văn bản
-const GENERATION_MODEL = 'gemini-3-flash-preview';
+// Sử dụng model 2.0 Flash Exp (thường ổn định hơn cho API Key cá nhân so với bản preview kín)
+const GENERATION_MODEL = 'gemini-2.0-flash-exp';
 
 // Key dự phòng được cung cấp
 const BACKUP_KEY = "AIzaSyAuK2lYeCXXm0b7APCJ0pciy045MI5gGhM";
@@ -12,8 +12,7 @@ const API_KEY = process.env.API_KEY || BACKUP_KEY;
 const getAI = () => {
     if (!API_KEY) {
         console.warn("API Key is missing for Gemini AI");
-        // Return a dummy instance to prevent crash, calls will fail gracefully later
-        return new GoogleGenAI({ apiKey: '' });
+        return null;
     }
     return new GoogleGenAI({ apiKey: API_KEY });
 };
@@ -23,6 +22,8 @@ export const generateProductDescription = async (name: string, category: string)
 
   try {
     const ai = getAI();
+    if (!ai) throw new Error("Không thể khởi tạo AI Service");
+
     const prompt = `Viết một mô tả ngắn gọn, hấp dẫn (bằng tiếng Việt) cho một giống gia cầm hoặc sản phẩm tên là "${name}" thuộc loại "${category}". Tập trung vào chất lượng thịt, khả năng sinh trưởng hoặc đặc điểm giống. Giữ dưới 40 từ. Không dùng Markdown.`;
     
     const response = await ai.models.generateContent({
@@ -31,9 +32,9 @@ export const generateProductDescription = async (name: string, category: string)
     });
     
     return response.text || "Không thể tạo mô tả lúc này.";
-  } catch (error) {
+  } catch (error: any) {
     console.error("Gemini Error:", error);
-    return "Lỗi kết nối AI.";
+    return `Lỗi AI: ${error.message || "Không xác định"}`;
   }
 };
 
@@ -42,10 +43,11 @@ export const analyzeBusinessData = async (
   products: Product[], 
   orders: Order[]
 ): Promise<string> => {
-  if (!API_KEY) return "Hệ thống chưa phát hiện API Key. Vui lòng cấu hình biến môi trường API_KEY.";
+  if (!API_KEY) return "Hệ thống chưa phát hiện API Key. Vui lòng kiểm tra cấu hình.";
 
   try {
     const ai = getAI();
+    if (!ai) throw new Error("Không thể khởi tạo AI Service");
     
     // 1. Summarize Data for Context (Avoid token limit issues by aggregating)
     const totalRevenue = orders.reduce((sum, o) => sum + o.total, 0);
@@ -100,8 +102,9 @@ export const analyzeBusinessData = async (
     });
 
     return response.text || "Tôi không tìm thấy câu trả lời phù hợp.";
-  } catch (error) {
+  } catch (error: any) {
     console.error("Gemini Analysis Error:", error);
-    return "Xin lỗi, tôi đang gặp sự cố khi phân tích dữ liệu. Hãy thử lại sau.";
+    // Return visible error for debugging
+    return `Đã xảy ra lỗi khi kết nối AI (${error.status || error.message}). Vui lòng thử lại sau.`;
   }
 };
