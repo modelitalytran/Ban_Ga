@@ -1,16 +1,17 @@
 import React, { useState, useRef } from 'react';
-import { Product, PriceHistoryItem, ProductUnit } from '../types';
+import { Product, PriceHistoryItem, ProductUnit, ImportRecord } from '../types';
 import { generateProductDescription } from '../services/geminiService';
-import { Plus, Search, Edit2, Trash2, Sparkles, X, Loader2, Feather, ArrowDownCircle, AlertTriangle, Upload, Image as ImageIcon, Filter, TrendingUp, History, Check, AlertCircle, Scale } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Sparkles, X, Loader2, Feather, ArrowDownCircle, AlertTriangle, Upload, Image as ImageIcon, Filter, TrendingUp, History, Check, AlertCircle, Scale, DollarSign, FileText } from 'lucide-react';
 
 interface InventoryProps {
   products: Product[];
   onAddProduct: (product: Product) => void;
   onUpdateProduct: (product: Product) => void;
   onDeleteProduct: (id: string) => void;
+  onImportStock: (record: ImportRecord, updatedProduct: Product) => void; // New callback
 }
 
-const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, onUpdateProduct, onDeleteProduct }) => {
+const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, onUpdateProduct, onDeleteProduct, onImportStock }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'low' | 'out'>('all');
   
@@ -23,11 +24,15 @@ const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, onUpdateP
   
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [importingProduct, setImportingProduct] = useState<Product | null>(null);
+  
+  // Import Form State
   const [importQuantity, setImportQuantity] = useState<number | ''>('');
+  const [importCost, setImportCost] = useState<number | ''>('');
+  const [importNote, setImportNote] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Form State
+  // Form State for Product
   const [formData, setFormData] = useState<Partial<Product>>({
     name: '',
     category: 'Gà',
@@ -90,6 +95,8 @@ const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, onUpdateP
   const openImportModal = (product: Product) => {
     setImportingProduct(product);
     setImportQuantity('');
+    setImportCost('');
+    setImportNote('');
     setIsImportModalOpen(true);
   };
 
@@ -182,12 +189,30 @@ const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, onUpdateP
         return;
     }
     
+    const quantity = Number(importQuantity);
+    
+    // Create Import Record
+    const importRecord: ImportRecord = {
+        id: `IMP-${Date.now()}`,
+        date: new Date().toISOString(),
+        productId: importingProduct.id,
+        productName: importingProduct.name,
+        productImage: importingProduct.image,
+        quantity: quantity,
+        unit: importingProduct.unit,
+        importPrice: importCost ? Number(importCost) : undefined,
+        note: importNote
+    };
+
+    // Calculate New Product State
     const updatedProduct = {
         ...importingProduct,
-        stock: importingProduct.stock + Number(importQuantity)
+        stock: importingProduct.stock + quantity
     };
     
-    onUpdateProduct(updatedProduct);
+    // Trigger Callback
+    onImportStock(importRecord, updatedProduct);
+    
     setIsImportModalOpen(false);
     
     // Show success animation
@@ -356,7 +381,7 @@ const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, onUpdateP
                 );
               })}
             </tbody>
-          </table>
+            </table>
         </div>
 
         {/* Mobile List View (Cards) - Optimized for Landscape Grid */}
@@ -426,11 +451,10 @@ const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, onUpdateP
         )}
       </div>
 
-      {/* Add/Edit Product Modal */}
+      {/* Add/Edit Product Modal (Unchanged parts hidden for brevity) */}
       {isProductModalOpen && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col max-h-[90vh]">
-            {/* Modal Header */}
             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
               <div>
                   <h3 className="text-xl font-bold text-gray-800">
@@ -637,7 +661,7 @@ const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, onUpdateP
         </div>
       )}
 
-      {/* Import Stock Modal */}
+      {/* Import Stock Modal (Updated with more fields) */}
       {isImportModalOpen && importingProduct && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
             <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl animate-in fade-in zoom-in duration-200">
@@ -649,12 +673,13 @@ const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, onUpdateP
                         <X size={20} />
                     </button>
                 </div>
-                <div className="p-6 space-y-5">
+                <div className="p-6 space-y-4">
                     <div className="flex items-center gap-4">
                         <img src={importingProduct.image} alt="" className="w-16 h-16 rounded-lg object-cover bg-gray-100"/>
                         <div>
                              <p className="text-sm text-gray-500">Sản phẩm</p>
                              <p className="font-bold text-gray-900 text-lg">{importingProduct.name}</p>
+                             <p className="text-xs text-gray-500">Tồn hiện tại: {importingProduct.stock}</p>
                         </div>
                     </div>
                     
@@ -669,12 +694,36 @@ const Inventory: React.FC<InventoryProps> = ({ products, onAddProduct, onUpdateP
                                 onChange={e => setImportQuantity(Number(e.target.value))}
                                 placeholder="0"
                             />
-                            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col gap-1">
-                                <button onClick={() => setImportQuantity(Number(importQuantity) + 10)} className="text-[10px] bg-gray-100 px-2 rounded hover:bg-gray-200">+10</button>
-                                <button onClick={() => setImportQuantity(Number(importQuantity) + 50)} className="text-[10px] bg-gray-100 px-2 rounded hover:bg-gray-200">+50</button>
-                            </div>
                         </div>
                     </div>
+
+                    <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-1">Tổng tiền nhập (Tùy chọn)</label>
+                        <div className="relative">
+                            <input 
+                                type="number" 
+                                className="w-full pl-3 pr-8 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none"
+                                value={importCost}
+                                onChange={e => setImportCost(Number(e.target.value))}
+                                placeholder="0"
+                            />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-bold">₫</span>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-1">Nguồn gốc / Ghi chú</label>
+                        <div className="relative">
+                            <input 
+                                type="text" 
+                                className="w-full pl-3 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none"
+                                value={importNote}
+                                onChange={e => setImportNote(e.target.value)}
+                                placeholder="VD: Trại giống A..."
+                            />
+                        </div>
+                    </div>
+
                 </div>
                 <div className="p-5 border-t border-gray-100 flex justify-end gap-3 bg-gray-50 rounded-b-2xl">
                     <button 

@@ -10,7 +10,7 @@ import AIAssistant from './components/AIAssistant';
 import Login from './components/Login';
 import ChangePasswordModal from './components/ChangePasswordModal';
 
-import { ViewState, Product, Order, Customer, PaymentRecord } from './types';
+import { ViewState, Product, Order, Customer, PaymentRecord, ImportRecord } from './types';
 import { 
     listenToStore, 
     saveProductToCloud, 
@@ -18,7 +18,8 @@ import {
     saveCustomerToCloud,
     deleteCustomerFromCloud,
     saveOrderToCloud,
-    saveCheckoutTransaction 
+    saveCheckoutTransaction,
+    saveImportTransaction
 } from './services/storage';
 import { isAuthenticated, setSession } from './services/auth';
 import { Loader2, CloudOff } from 'lucide-react';
@@ -34,6 +35,7 @@ const App: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [imports, setImports] = useState<ImportRecord[]>([]);
 
   useEffect(() => {
     if (isAuthenticated()) {
@@ -53,6 +55,7 @@ const App: React.FC = () => {
         setProducts(data.products || []);
         setOrders(data.orders || []);
         setCustomers(data.customers || []);
+        setImports(data.imports || []);
         setIsLoadingData(false);
       }, (errorMsg) => {
         setSyncError(errorMsg);
@@ -113,6 +116,16 @@ const App: React.FC = () => {
         setCustomers(prev => prev.filter(c => c.id !== id));
         await deleteCustomerFromCloud(id);
     }
+  };
+
+  // --- IMPORT STOCK HANDLER ---
+  const handleImportStock = async (record: ImportRecord, updatedProduct: Product) => {
+      // Optimistic Update
+      setImports(prev => [record, ...prev]);
+      setProducts(prev => prev.map(p => p.id === updatedProduct.id ? updatedProduct : p));
+
+      // Cloud Save (Atomic)
+      await saveImportTransaction(record, updatedProduct);
   };
 
   // --- REFACTORED CHECKOUT LOGIC (Robust & Granular) ---
@@ -319,6 +332,7 @@ const App: React.FC = () => {
             onAddProduct={handleAddProduct} 
             onUpdateProduct={handleUpdateProduct}
             onDeleteProduct={handleDeleteProduct}
+            onImportStock={handleImportStock}
           />
         );
       case 'debt-manager':
@@ -339,7 +353,7 @@ const App: React.FC = () => {
             />
         );
       case 'history':
-        return <SalesHistory orders={orders} onEditOrder={handleEditOrder} />;
+        return <SalesHistory orders={orders} imports={imports} onEditOrder={handleEditOrder} />;
       case 'ai-assistant':
         return <AIAssistant products={products} orders={orders} />;
       default:

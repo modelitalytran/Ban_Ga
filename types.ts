@@ -18,6 +18,18 @@ export interface Product {
   priceHistory?: PriceHistoryItem[]; // Lịch sử thay đổi giá
 }
 
+export interface ImportRecord {
+  id: string;
+  date: string;
+  productId: string;
+  productName: string;
+  productImage: string;
+  quantity: number;
+  unit: ProductUnit;
+  importPrice?: number; // Giá nhập (tổng hoặc đơn giá tùy logic, ở đây lưu Tổng tiền nhập)
+  note?: string; // Nguồn gốc, trại giống, v.v.
+}
+
 export interface CartItem extends Product {
   quantity: number; // Số con
   weight?: number; // Tổng cân nặng (chỉ dùng nếu unit='kg')

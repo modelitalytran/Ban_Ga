@@ -1,4 +1,4 @@
-import { Product, Order, Customer } from '../types';
+import { Product, Order, Customer, ImportRecord } from '../types';
 import { db } from './firebase';
 import { 
     doc, 
@@ -18,6 +18,7 @@ import {
 const PRODUCTS_COL_NAME = 'products';
 const ORDERS_COL_NAME = 'orders';
 const CUSTOMERS_COL_NAME = 'customers';
+const IMPORTS_COL_NAME = 'imports'; // New collection for import history
 const OLD_STORE_DOC_REF = doc(db, 'data', 'main_store'); // Reference to old monolithic doc
 
 // --- INTERFACES ---
@@ -25,6 +26,7 @@ export interface AppData {
     products: Product[];
     orders: Order[];
     customers: Customer[];
+    imports: ImportRecord[];
 }
 
 // --- HELPER: SANITIZE DATA ---
@@ -113,11 +115,8 @@ const migrateDataIfNeeded = async (
 
 // --- MAIN LISTENER ---
 export const listenToStore = (callback: (data: AppData) => void, onError: (msg: string) => void) => {
-    // Local cache to aggregate updates from 3 collections
-    const cache: AppData = { products: [], orders: [], customers: [] };
-    
-    // Status flags to know when initial sync is done (optional, but good for UX)
-    // We just fire callback whenever any part updates.
+    // Local cache to aggregate updates from 4 collections
+    const cache: AppData = { products: [], orders: [], customers: [], imports: [] };
     
     // 1. Listener for Products
     const unsubProducts = onSnapshot(collection(db, PRODUCTS_COL_NAME), (snap) => {
@@ -156,10 +155,21 @@ export const listenToStore = (callback: (data: AppData) => void, onError: (msg: 
         console.error("Customers Sync Error", err);
     });
 
+    // 4. Listener for Imports
+    const unsubImports = onSnapshot(collection(db, IMPORTS_COL_NAME), (snap) => {
+        cache.imports = snap.docs.map(d => d.data() as ImportRecord);
+        // Sort imports client-side (Desc Date)
+        cache.imports.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        callback({ ...cache });
+    }, (err) => {
+        console.error("Imports Sync Error", err);
+    });
+
     return () => {
         unsubProducts();
         unsubOrders();
         unsubCustomers();
+        unsubImports();
     };
 };
 
@@ -248,14 +258,38 @@ export const saveCheckoutTransaction = async (
     }
 };
 
+// --- TRANSACTION SAVE (Import Stock) ---
+// Saves an Import Record AND Updates Product Stock atomically
+export const saveImportTransaction = async (
+    importRecord: ImportRecord,
+    updatedProduct: Product
+) => {
+    try {
+        const batch = writeBatch(db);
+
+        // 1. Create Import Record
+        const importRef = doc(db, IMPORTS_COL_NAME, importRecord.id);
+        batch.set(importRef, cleanPayload(importRecord));
+
+        // 2. Update Product Stock
+        const productRef = doc(db, PRODUCTS_COL_NAME, updatedProduct.id);
+        batch.set(productRef, cleanPayload(updatedProduct));
+
+        // 3. Commit
+        await batch.commit();
+        console.log("Import Transaction committed successfully");
+    } catch (e) {
+        console.error("Import Transaction failed:", e);
+        throw e;
+    }
+};
+
 // --- DEPRECATED STUBS (Kept to prevent crash if old references exist, but should not be used) ---
 export const saveProductsToCloud = async (products: Product[]) => { console.warn("Deprecated: Use granular saveProductToCloud"); };
 export const saveOrdersToCloud = async (orders: Order[]) => { console.warn("Deprecated: Use granular saveOrderToCloud"); };
 export const saveCustomersToCloud = async (customers: Customer[]) => { console.warn("Deprecated: Use granular saveCustomerToCloud"); };
 export const saveTransactionToCloud = async (orders: Order[], products: Product[]) => { 
     console.error("Deprecated: saveTransactionToCloud (bulk) called. Please use saveCheckoutTransaction.");
-    // Fallback: Just try to save them all (Inefficient but works for small data)
-    // Only use for migration or emergency
     const batch = writeBatch(db);
     orders.forEach(o => batch.set(doc(db, ORDERS_COL_NAME, o.id), cleanPayload(o)));
     products.forEach(p => batch.set(doc(db, PRODUCTS_COL_NAME, p.id), cleanPayload(p)));
